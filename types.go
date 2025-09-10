@@ -1,4 +1,4 @@
-package main
+package tscnparser
 
 // Point represents a 2D coordinate
 type Point struct {

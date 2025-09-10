@@ -1,4 +1,4 @@
-package main
+package tscnparser
 
 import (
 	"bufio"
@@ -30,7 +30,7 @@ type TSCNConverter struct {
 }
 
 // NewTSCNConverter creates a new converter instance
-func NewTSCNConverter() *TSCNConverter {
+func newTSCNConverter() *TSCNConverter {
 	return &TSCNConverter{
 		tileSize:            TileSize{Width: 16, Height: 16}, // Default tile size
 		sources:             make(map[int]*TileSource),
