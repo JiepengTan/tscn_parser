@@ -4,4 +4,4 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJ_DIR="$SCRIPT_DIR"
 cd $PROJ_DIR
-go run . -input main.tscn
+go run . -input main.tscn -replacements "replacements.json"

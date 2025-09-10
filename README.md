@@ -16,6 +16,58 @@ if err != nil {
 }
 ```
 
+## Command Line Usage
+
+### Using the test command
+
+```bash
+cd test/
+go run . -input <tscn_file> [-output <json_file>] [-replacements <json_file>] [-oldStr <old_string>] [-newStr <new_string>]
+```
+
+### Parameters
+
+- `-input`: Required. Path to the input TSCN file
+- `-output`: Optional. Path to the output JSON file. If not specified, generates `<input_filename>_tilemap.json`
+- `-replacements`: Optional. JSON file containing multiple replacement rules
+- `-oldStr`: Optional. Single string to replace in JSON output (applied after replacements file)
+- `-newStr`: Optional. Replacement string for oldStr
+
+### Examples
+
+```bash
+# Basic usage
+cd test/
+go run . -input main.tscn
+
+# With custom output file
+cd test/
+go run . -input main.tscn -output my_tilemap.json
+
+# With multiple replacements from JSON file
+cd test/
+go run . -input main.tscn -replacements replacements.json
+
+# With both JSON replacements and single replacement
+cd test/
+go run . -input main.tscn -replacements replacements.json -oldStr "additional_old" -newStr "additional_new"
+```
+
+### Replacement Configuration File
+
+Create a JSON file (e.g., `replacements.json`) with multiple replacement rules:
+
+```json
+{
+  "replacements": [
+    {"old": "res://assets/sprites/", "new": "textures/"},
+    {"old": "res://assets/scenes/", "new": "prefabs/"},
+    {"old": ".png", "new": ".webp"},
+    {"old": ".tscn", "new": ".scene"}
+  ]
+}
+```
+
 ## Output Format
 
 The tool generates a JSON file with the following structure:
