@@ -114,32 +114,38 @@ func generateGoCode(mapData *tscnparser.MapData, originalFileName string) string
 	var sb strings.Builder
 
 	// Generate package and imports
-	sb.WriteString("package main\n\n")
+	//sb.WriteString("package main\n\n")
 	sb.WriteString("// Auto-generated from " + originalFileName + "\n")
-	sb.WriteString("// This file contains the parsed tilemap data as Go code\n\n")
+	sb.WriteString("// This file contains the parsed tilemap data as Go code\n")
+	sb.WriteString("// All type definitions are included, so no external dependencies are needed\n\n")
+
+	// Generate type definitions
+	sb.WriteString(generateTypeDefinitions())
+	sb.WriteString("\n")
 
 	// Generate variable declaration
-	sb.WriteString("var MapData = &MapData{\n")
+	sb.WriteString("func Load() *tscnMapData{\n")
+	sb.WriteString("return &tscnMapData{\n")
 
 	// Generate TileMap
-	sb.WriteString("\tTileMap: TileMapData{\n")
+	sb.WriteString("\tTileMap: tscnTileMapData{\n")
 	sb.WriteString(fmt.Sprintf("\t\tFormat: %d,\n", mapData.TileMap.Format))
-	sb.WriteString(fmt.Sprintf("\t\tTileSize: TileSize{Width: %d, Height: %d},\n",
+	sb.WriteString(fmt.Sprintf("\t\tTileSize: tscnTileSize{Width: %d, Height: %d},\n",
 		mapData.TileMap.TileSize.Width, mapData.TileMap.TileSize.Height))
 
 	// Generate TileSet
-	sb.WriteString("\t\tTileSet: TileSet{\n")
-	sb.WriteString("\t\t\tSources: []TileSource{\n")
+	sb.WriteString("\t\tTileSet: tscnTileSet{\n")
+	sb.WriteString("\t\t\tSources: []tscnTileSource{\n")
 	for _, source := range mapData.TileMap.TileSet.Sources {
 		sb.WriteString("\t\t\t\t{\n")
 		sb.WriteString(fmt.Sprintf("\t\t\t\t\tID: %d,\n", source.ID))
 		sb.WriteString(fmt.Sprintf("\t\t\t\t\tTexturePath: \"%s\",\n", source.TexturePath))
-		sb.WriteString("\t\t\t\t\tTiles: []TileInfo{\n")
+		sb.WriteString("\t\t\t\t\tTiles: []tscnTileInfo{\n")
 		for _, tile := range source.Tiles {
 			sb.WriteString("\t\t\t\t\t\t{\n")
-			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\t\tAtlasCoords: Point{X: %d, Y: %d},\n",
+			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\t\tAtlasCoords: tscnPoint{X: %d, Y: %d},\n",
 				tile.AtlasCoords.X, tile.AtlasCoords.Y))
-			sb.WriteString("\t\t\t\t\t\t\tPhysics: PhysicsData{},\n")
+			sb.WriteString("\t\t\t\t\t\t\tPhysics: tscnPhysicsData{},\n")
 			sb.WriteString("\t\t\t\t\t\t},\n")
 		}
 		sb.WriteString("\t\t\t\t\t},\n")
@@ -149,20 +155,20 @@ func generateGoCode(mapData *tscnparser.MapData, originalFileName string) string
 	sb.WriteString("\t\t},\n")
 
 	// Generate Layers
-	sb.WriteString("\t\tLayers: []Layer{\n")
+	sb.WriteString("\t\tLayers: []tscnLayer{\n")
 	for _, layer := range mapData.TileMap.Layers {
 		sb.WriteString("\t\t\t{\n")
 		sb.WriteString(fmt.Sprintf("\t\t\t\tID: %d,\n", layer.ID))
 		sb.WriteString(fmt.Sprintf("\t\t\t\tName: \"%s\",\n", layer.Name))
-		sb.WriteString("\t\t\t\tTiles: []TileInstance{\n")
+		sb.WriteString("\t\t\t\tTiles: []tscnTileInstance{\n")
 		for _, tile := range layer.Tiles {
 			sb.WriteString("\t\t\t\t\t{\n")
-			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tTileCoords: Point{X: %d, Y: %d},\n",
+			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tTileCoords: tscnPoint{X: %d, Y: %d},\n",
 				tile.TileCoords.X, tile.TileCoords.Y))
-			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tWorldCoords: WorldPoint{X: %.1f, Y: %.1f},\n",
+			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tWorldCoords: tscnWorldPoint{X: %.1f, Y: %.1f},\n",
 				tile.WorldCoords.X, tile.WorldCoords.Y))
 			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tSourceID: %d,\n", tile.SourceID))
-			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tAtlasCoords: Point{X: %d, Y: %d},\n",
+			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tAtlasCoords: tscnPoint{X: %d, Y: %d},\n",
 				tile.AtlasCoords.X, tile.AtlasCoords.Y))
 			sb.WriteString("\t\t\t\t\t},\n")
 		}
@@ -173,12 +179,12 @@ func generateGoCode(mapData *tscnparser.MapData, originalFileName string) string
 	sb.WriteString("\t},\n")
 
 	// Generate Sprite2Ds
-	sb.WriteString("\tSprite2Ds: []Sprite2DNode{\n")
+	sb.WriteString("\tSprite2Ds: []tscnSprite2DNode{\n")
 	for _, sprite := range mapData.Sprite2Ds {
 		sb.WriteString("\t\t{\n")
 		sb.WriteString(fmt.Sprintf("\t\t\tName: \"%s\",\n", sprite.Name))
 		sb.WriteString(fmt.Sprintf("\t\t\tParent: \"%s\",\n", sprite.Parent))
-		sb.WriteString(fmt.Sprintf("\t\t\tPosition: WorldPoint{X: %.1f, Y: %.1f},\n",
+		sb.WriteString(fmt.Sprintf("\t\t\tPosition: tscnWorldPoint{X: %.1f, Y: %.1f},\n",
 			sprite.Position.X, sprite.Position.Y))
 		sb.WriteString(fmt.Sprintf("\t\t\tTexturePath: \"%s\",\n", sprite.TexturePath))
 		sb.WriteString(fmt.Sprintf("\t\t\tZIndex: %d,\n", sprite.ZIndex))
@@ -187,12 +193,12 @@ func generateGoCode(mapData *tscnparser.MapData, originalFileName string) string
 	sb.WriteString("\t},\n")
 
 	// Generate Prefabs
-	sb.WriteString("\tPrefabs: []PrefabNode{\n")
+	sb.WriteString("\tPrefabs: []tscnPrefabNode{\n")
 	for _, prefab := range mapData.Prefabs {
 		sb.WriteString("\t\t{\n")
 		sb.WriteString(fmt.Sprintf("\t\t\tName: \"%s\",\n", prefab.Name))
 		sb.WriteString(fmt.Sprintf("\t\t\tParent: \"%s\",\n", prefab.Parent))
-		sb.WriteString(fmt.Sprintf("\t\t\tPosition: WorldPoint{X: %.1f, Y: %.1f},\n",
+		sb.WriteString(fmt.Sprintf("\t\t\tPosition: tscnWorldPoint{X: %.1f, Y: %.1f},\n",
 			prefab.Position.X, prefab.Position.Y))
 		sb.WriteString(fmt.Sprintf("\t\t\tPrefabPath: \"%s\",\n", prefab.PrefabPath))
 
@@ -210,8 +216,103 @@ func generateGoCode(mapData *tscnparser.MapData, originalFileName string) string
 	sb.WriteString("\t},\n")
 
 	sb.WriteString("}\n")
+	sb.WriteString("}\n")
 
 	return sb.String()
+}
+
+func generateTypeDefinitions() string {
+	return `// Type definitions for tilemap data structures (prefixed with tscn to avoid naming conflicts)
+
+// tscnPoint represents a 2D coordinate
+type tscnPoint struct {
+	X int ` + "`json:\"x\"`" + `
+	Y int ` + "`json:\"y\"`" + `
+}
+
+// tscnWorldPoint represents a 2D coordinate in world space (pixels)
+type tscnWorldPoint struct {
+	X float64 ` + "`json:\"x\"`" + `
+	Y float64 ` + "`json:\"y\"`" + `
+}
+
+// tscnTileSize represents the dimensions of a tile
+type tscnTileSize struct {
+	Width  int ` + "`json:\"width\"`" + `
+	Height int ` + "`json:\"height\"`" + `
+}
+
+// tscnPhysicsData represents physics properties of a tile
+type tscnPhysicsData struct {
+	CollisionPoints []tscnWorldPoint ` + "`json:\"collision_points,omitempty\"`" + `
+}
+
+// tscnTileInfo represents information about a single tile in the tileset
+type tscnTileInfo struct {
+	AtlasCoords tscnPoint       ` + "`json:\"atlas_coords\"`" + `
+	Physics     tscnPhysicsData ` + "`json:\"physics,omitempty\"`" + `
+}
+
+// tscnTileSource represents a tileset source
+type tscnTileSource struct {
+	ID          int            ` + "`json:\"id\"`" + `
+	TexturePath string         ` + "`json:\"texture_path\"`" + `
+	Tiles       []tscnTileInfo ` + "`json:\"tiles\"`" + `
+}
+
+// tscnTileSet represents the complete tileset information
+type tscnTileSet struct {
+	Sources []tscnTileSource ` + "`json:\"sources\"`" + `
+}
+
+// tscnTileInstance represents a placed tile in the map
+type tscnTileInstance struct {
+	TileCoords  tscnPoint      ` + "`json:\"tile_coords\"`" + `
+	WorldCoords tscnWorldPoint ` + "`json:\"world_coords\"`" + `
+	SourceID    int            ` + "`json:\"source_id\"`" + `
+	AtlasCoords tscnPoint      ` + "`json:\"atlas_coords\"`" + `
+}
+
+// tscnLayer represents a tilemap layer
+type tscnLayer struct {
+	ID    int                ` + "`json:\"id\"`" + `
+	Name  string             ` + "`json:\"name\"`" + `
+	Tiles []tscnTileInstance ` + "`json:\"tiles\"`" + `
+}
+
+// tscnTileMapData represents the complete tilemap data
+type tscnTileMapData struct {
+	Format   int          ` + "`json:\"format\"`" + `
+	TileSize tscnTileSize ` + "`json:\"tile_size\"`" + `
+	TileSet  tscnTileSet  ` + "`json:\"tileset\"`" + `
+	Layers   []tscnLayer  ` + "`json:\"layers\"`" + `
+}
+
+// tscnSprite2DNode represents a Sprite2D node in the scene
+type tscnSprite2DNode struct {
+	Name        string         ` + "`json:\"name\"`" + `
+	Parent      string         ` + "`json:\"parent\"`" + `
+	Position    tscnWorldPoint ` + "`json:\"position\"`" + `
+	TexturePath string         ` + "`json:\"texture_path\"`" + `
+	ZIndex      int            ` + "`json:\"z_index,omitempty\"`" + `
+}
+
+// tscnPrefabNode represents an instantiated prefab node in the scene
+type tscnPrefabNode struct {
+	Name       string                 ` + "`json:\"name\"`" + `
+	Parent     string                 ` + "`json:\"parent\"`" + `
+	Position   tscnWorldPoint         ` + "`json:\"position\"`" + `
+	PrefabPath string                 ` + "`json:\"prefab_path\"`" + `
+	Properties map[string]interface{} ` + "`json:\"properties,omitempty\"`" + `
+}
+
+// tscnMapData represents the root structure for JSON output
+type tscnMapData struct {
+	TileMap   tscnTileMapData    ` + "`json:\"tilemap\"`" + `
+	Sprite2Ds []tscnSprite2DNode ` + "`json:\"sprite2ds\"`" + `
+	Prefabs   []tscnPrefabNode   ` + "`json:\"prefabs\"`" + `
+}
+`
 }
 
 func formatGoValue(value interface{}) string {

@@ -22,7 +22,7 @@ if err != nil {
 
 ```bash
 cd test/
-go run . -input <tscn_file> [-output <json_file>] [-replacements <json_file>] [-oldStr <old_string>] [-newStr <new_string>]
+go run . -input <tscn_file> [-output <json_file>] [-replacements <json_file>] [-generateGo] [-oldStr <old_string>] [-newStr <new_string>]
 ```
 
 ### Parameters
@@ -30,6 +30,7 @@ go run . -input <tscn_file> [-output <json_file>] [-replacements <json_file>] [-
 - `-input`: Required. Path to the input TSCN file
 - `-output`: Optional. Path to the output JSON file. If not specified, generates `<input_filename>_tilemap.json`
 - `-replacements`: Optional. JSON file containing multiple replacement rules
+- `-generateGo`: Optional. Generate Go code file (.go.txt) for direct integration
 - `-oldStr`: Optional. Single string to replace in JSON output (applied after replacements file)
 - `-newStr`: Optional. Replacement string for oldStr
 
@@ -51,6 +52,14 @@ go run . -input main.tscn -replacements replacements.json
 # With both JSON replacements and single replacement
 cd test/
 go run . -input main.tscn -replacements replacements.json -oldStr "additional_old" -newStr "additional_new"
+
+# Generate Go code for direct integration
+cd test/
+go run . -input main.tscn -generateGo
+
+# Generate both JSON and Go code with replacements
+cd test/
+go run . -input main.tscn -replacements replacements.json -generateGo
 ```
 
 ### Replacement Configuration File
@@ -65,6 +74,56 @@ Create a JSON file (e.g., `replacements.json`) with multiple replacement rules:
     {"old": ".png", "new": ".webp"},
     {"old": ".tscn", "new": ".scene"}
   ]
+}
+```
+
+### Go Code Generation
+
+When using the `-generateGo` flag, the tool generates a `.go.txt` file containing Go code that defines the tilemap data as a variable. The file includes all necessary type definitions, making it completely self-contained with no external dependencies. This allows for direct integration into other Go projects without needing to import or define the data structures separately.
+
+Example generated Go code structure:
+```go
+package main
+
+// Auto-generated from main.tscn
+// This file contains the parsed tilemap data as Go code
+// All type definitions are included, so no external dependencies are needed
+
+// Type definitions for tilemap data structures (prefixed with tscn to avoid naming conflicts)
+type tscnPoint struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+}
+
+type tscnWorldPoint struct {
+	X float64 `json:"x"`
+	Y float64 `json:"y"`
+}
+
+// ... (all other type definitions with tscn prefix included)
+
+var MapData = &tscnMapData{
+	TileMap: tscnTileMapData{
+		Format: 2,
+		TileSize: tscnTileSize{Width: 16, Height: 16},
+		TileSet: tscnTileSet{
+			Sources: []tscnTileSource{
+				{
+					ID: 0,
+					TexturePath: "textures/GroundBlock.png",
+					Tiles: []tscnTileInfo{
+						{
+							AtlasCoords: tscnPoint{X: 0, Y: 0},
+							Physics: tscnPhysicsData{},
+						},
+					},
+				},
+			},
+		},
+		// ... (complete data structure)
+	},
+	Sprite2Ds: []tscnSprite2DNode{},
+	Prefabs: []tscnPrefabNode{},
 }
 ```
 
