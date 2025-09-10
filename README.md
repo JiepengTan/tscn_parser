@@ -1,26 +1,19 @@
 # TSCN Parser
 
-A command-line tool that converts Godot TSCN (Text Scene) files to tilemap JSON format.
+A Go library and command-line tool that converts Godot TSCN (Text Scene) files to tilemap JSON format.
 
-## Usage
+## Library Usage
 
-```bash
-go run . -input <tscn_file> [-output <json_file>]
-```
+The package can be imported and used as a library:
 
-### Parameters
+```go
+import tscnparser "github.com/JiepengTan/tscn_parser"
 
-- `-input`: Required. Path to the input TSCN file
-- `-output`: Optional. Path to the output JSON file. If not specified, generates `<input_filename>_tilemap.json`
-
-### Examples
-
-```bash
-# Basic usage
-go run . -input test/main.tscn
-
-# With custom output file
-go run . -input test/main.tscn -output my_tilemap.json
+// Parse a TSCN file
+mapData, err := tscnparser.Parse("path/to/scene.tscn")
+if err != nil {
+    log.Fatal(err)
+}
 ```
 
 ## Output Format
@@ -61,16 +54,38 @@ The tool generates a JSON file with the following structure:
       }
     ]
   },
-  "sprite2ds": [],
-  "prefabs": []
+  "sprite2ds": [
+    {
+      "name": "Cloud1",
+      "parent": "Decorations/Clouds",
+      "position": {"x": -120, "y": -48},
+      "texture_path": "res://assets/sprites/Cloud1.png",
+      "z_index": 0
+    }
+  ],
+  "prefabs": [
+    {
+      "name": "Brick",
+      "parent": "Environment/Platforms/Platform1",
+      "position": {"x": 200, "y": 100},
+      "prefab_path": "res://assets/scenes/brick.tscn",
+      "properties": {"gid": 123}
+    }
+  ]
 }
 ```
+
+The output includes:
+- **tilemap**: Core tilemap data with tile layers and tilesets
+- **sprite2ds**: Individual Sprite2D nodes found in the scene
+- **prefabs**: Instantiated scene prefabs with their properties
 
 ## Testing
 
 Run the test script to verify the tool works correctly:
 
 ```bash
+cd test/
 ./test.sh
 ```
 
