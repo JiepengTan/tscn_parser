@@ -61,7 +61,7 @@ func main() {
 			}
 		}
 		tileMapData.TileMap.Layers = convertedLayers
-		
+
 		fmt.Printf("Successfully parsed %d layers from TSCN file\n", len(customLayers))
 	}
 
@@ -150,6 +150,12 @@ func generateGoCode(mapData *tscnparser.MapData, customLayers []CustomLayer, ori
 	sb.WriteString("// Auto-generated from " + originalFileName + "\n")
 	sb.WriteString("// This file contains the parsed tilemap data as Go code\n")
 	sb.WriteString("// All type definitions are included, so no external dependencies are needed\n\n")
+	sb.WriteString("// Required imports for the LoadFromJson function:\n")
+	sb.WriteString("// import (\n")
+	sb.WriteString("//     \"encoding/json\"\n")
+	sb.WriteString("//     \"fmt\"\n")
+	sb.WriteString("//     \"os\"\n")
+	sb.WriteString("// )\n\n")
 
 	// Generate type definitions
 	sb.WriteString(generateTypeDefinitions())
@@ -249,10 +255,35 @@ func generateGoCode(mapData *tscnparser.MapData, customLayers []CustomLayer, ori
 	sb.WriteString("}\n")
 	sb.WriteString("\n")
 
+	// Add LoadFromJson function
+	sb.WriteString(generateLoadFromJsonFunction())
+	sb.WriteString("\n")
+
 	// Add runtime parsing utilities
 	sb.WriteString(generateRuntimeUtilities())
 
 	return sb.String()
+}
+
+func generateLoadFromJsonFunction() string {
+	return `// LoadFromJson loads tilemap data from a JSON file
+// Usage: mapData := LoadFromJson("path/to/tilemap.json")
+func LoadFromJson(dataPath string) *tscnMapData {
+	// Read the JSON file
+	data, err := os.ReadFile(dataPath)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to read JSON file %s: %v", dataPath, err))
+	}
+	
+	// Parse JSON into our data structure
+	var mapData tscnMapData
+	err = json.Unmarshal(data, &mapData)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to parse JSON file %s: %v", dataPath, err))
+	}
+	
+	return &mapData
+}`
 }
 
 // Define our own layer structure with TileData field
@@ -330,16 +361,16 @@ func parseLayersFromTSCN(filename string) ([]CustomLayer, error) {
 
 // Custom JSON output structure that includes tile data
 type CustomJSONOutput struct {
-	TileMap   CustomTileMapData        `json:"tilemap"`
+	TileMap   CustomTileMapData         `json:"tilemap"`
 	Sprite2Ds []tscnparser.Sprite2DNode `json:"sprite2ds"`
 	Prefabs   []tscnparser.PrefabNode   `json:"prefabs"`
 }
 
 type CustomTileMapData struct {
-	Format   int                       `json:"format"`
-	TileSize tscnparser.TileSize       `json:"tile_size"`
-	TileSet  tscnparser.TileSet        `json:"tileset"`
-	Layers   []CustomLayer             `json:"layers"`
+	Format   int                 `json:"format"`
+	TileSize tscnparser.TileSize `json:"tile_size"`
+	TileSet  tscnparser.TileSet  `json:"tileset"`
+	Layers   []CustomLayer       `json:"layers"`
 }
 
 func createCustomJSONOutput(original *tscnparser.MapData, customLayers []CustomLayer) *CustomJSONOutput {
@@ -360,12 +391,10 @@ func generateRuntimeUtilities() string {
 // Runtime utilities for parsing tile data
 
 // TileMapParser provides utilities for parsing compact tile data
-type TileMapParser struct{}
-
 // ParseTileData converts compact tile data array to tile instances
 // The tile_data format is: [x, source_id, atlas_coords_encoded, x2, source_id2, atlas_coords_encoded2, ...]
 // Where atlas_coords_encoded combines atlas X and Y coordinates
-func (p *TileMapParser) ParseTileData(tileData []int, tileSize tscnTileSize) []tscnTileInstance {
+func ParseTileData(tileData []int, tileSize tscnTileSize) []tscnTileInstance {
 	var tiles []tscnTileInstance
 	
 	for i := 0; i < len(tileData); i += 3 {
