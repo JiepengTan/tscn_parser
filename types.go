@@ -1,13 +1,12 @@
 package tscnparser
 
-// Point represents a 2D coordinate
-type Point struct {
+type Vec2i struct {
 	X int `json:"x"`
 	Y int `json:"y"`
 }
 
 // WorldPoint represents a 2D coordinate in world space (pixels)
-type WorldPoint struct {
+type Vec2 struct {
 	X float64 `json:"x"`
 	Y float64 `json:"y"`
 }
@@ -20,12 +19,12 @@ type TileSize struct {
 
 // PhysicsData represents physics properties of a tile
 type PhysicsData struct {
-	CollisionPoints []WorldPoint `json:"collision_points,omitempty"`
+	CollisionPoints []Vec2 `json:"collision_points,omitempty"`
 }
 
 // TileInfo represents information about a single tile in the tileset
 type TileInfo struct {
-	AtlasCoords Point       `json:"atlas_coords"`
+	AtlasCoords Vec2i       `json:"atlas_coords"`
 	Physics     PhysicsData `json:"physics,omitempty"`
 }
 
@@ -43,10 +42,9 @@ type TileSet struct {
 
 // TileInstance represents a placed tile in the map
 type TileInstance struct {
-	TileCoords  Point      `json:"tile_coords"`
-	WorldCoords WorldPoint `json:"world_coords"`
-	SourceID    int        `json:"source_id"`
-	AtlasCoords Point      `json:"atlas_coords"`
+	TileCoords  Vec2i `json:"tile_coords"`
+	SourceID    int   `json:"source_id"`
+	AtlasCoords Vec2i `json:"atlas_coords"`
 }
 
 // Layer represents a tilemap layer
@@ -64,27 +62,27 @@ type TileMapData struct {
 	Layers   []Layer  `json:"layers"`
 }
 
-// Sprite2DNode represents a Sprite2D node in the scene
-type Sprite2DNode struct {
-	Name        string     `json:"name"`
-	Parent      string     `json:"parent"`
-	Position    WorldPoint `json:"position"`
-	TexturePath string     `json:"texture_path"`
-	ZIndex      int        `json:"z_index,omitempty"`
+// DecoratorNode represents a Sprite2D node in the scene
+type DecoratorNode struct {
+	Name     string `json:"name"`
+	Parent   string `json:"parent"`
+	Position Vec2   `json:"position"`
+	Path     string `json:"path"`
+	ZIndex   int    `json:"z_index,omitempty"`
 }
 
-// PrefabNode represents an instantiated prefab node in the scene
-type PrefabNode struct {
+// SpriteNode represents an instantiated prefab node in the scene
+type SpriteNode struct {
 	Name       string                 `json:"name"`
 	Parent     string                 `json:"parent"`
-	Position   WorldPoint             `json:"position"`
-	PrefabPath string                 `json:"prefab_path"`
-	Properties map[string]interface{} `json:"properties,omitempty"`
+	Position   Vec2                   `json:"position"`
+	Path       string                 `json:"path"`
+	Properties map[string]any `json:"properties,omitempty"`
 }
 
 // Root structure for JSON output
 type MapData struct {
-	TileMap   TileMapData    `json:"tilemap"`
-	Sprite2Ds []Sprite2DNode `json:"sprite2ds"`
-	Prefabs   []PrefabNode   `json:"prefabs"`
+	TileMap    TileMapData     `json:"tilemap"`
+	Decorators []DecoratorNode `json:"decorators"`
+	Sprites    []SpriteNode    `json:"sprites"`
 }
