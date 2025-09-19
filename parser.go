@@ -50,6 +50,11 @@ func (c *TSCNConverter) ConvertTSCNToTileMap(filename string) (*MapData, error) 
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	// Increase buffer size to handle very long lines
+	const maxCapacity = 1024 * 1024 // 1MB buffer
+	buf := make([]byte, maxCapacity)
+	scanner.Buffer(buf, maxCapacity)
+	
 	var currentSection string
 	var currentSubResource string
 	var format int

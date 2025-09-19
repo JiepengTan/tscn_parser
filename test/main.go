@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	tscnparser "github.com/JiepengTan/tscn_parser"
@@ -44,8 +45,35 @@ func main() {
 		log.Fatalf("Error converting TSCN: %v", err)
 	}
 
-	// Output to JSON
-	jsonData, err := json.MarshalIndent(tileMapData, "", "  ")
+	// Parse layer data directly from TSCN file since tscnparser doesn't handle it properly
+	customLayers, err := parseLayersFromTSCN(*inputFile)
+	if err != nil {
+		log.Printf("Warning: Could not parse layers from TSCN: %v", err)
+	} else {
+		// Convert CustomLayer to tscnparser.Layer format for the generation code
+		convertedLayers := make([]tscnparser.Layer, len(customLayers))
+		for i, customLayer := range customLayers {
+			// Create a compatible layer - we'll use our custom data in the generation
+			convertedLayers[i] = tscnparser.Layer{
+				ID:   customLayer.ID,
+				Name: customLayer.Name,
+				// Note: tscnparser.Layer doesn't have TileData, so we'll handle this in generateGoCode
+			}
+		}
+		tileMapData.TileMap.Layers = convertedLayers
+		
+		fmt.Printf("Successfully parsed %d layers from TSCN file\n", len(customLayers))
+	}
+
+	// Output to JSON with custom layers if available
+	var jsonData []byte
+	if customLayers != nil && len(customLayers) > 0 {
+		// Create a custom structure that includes our tile data
+		customOutput := createCustomJSONOutput(tileMapData, customLayers)
+		jsonData, err = json.MarshalIndent(customOutput, "", "  ")
+	} else {
+		jsonData, err = json.MarshalIndent(tileMapData, "", "  ")
+	}
 	if err != nil {
 		log.Fatalf("Error marshaling JSON: %v", err)
 	}
@@ -67,7 +95,11 @@ func main() {
 	// Generate Go code if requested
 	if *generateGo {
 		goCodeFile := generateGoFileName(*outputFile)
-		goCode := generateGoCode(tileMapData, filepath.Base(*inputFile))
+		// Use empty slice if customLayers is nil
+		if customLayers == nil {
+			customLayers = []CustomLayer{}
+		}
+		goCode := generateGoCode(tileMapData, customLayers, filepath.Base(*inputFile))
 		err = os.WriteFile(goCodeFile, []byte(goCode), 0644)
 		if err != nil {
 			log.Fatalf("Error writing Go code file: %v", err)
@@ -110,7 +142,7 @@ func generateGoFileName(jsonFile string) string {
 	return baseName + ".go.txt"
 }
 
-func generateGoCode(mapData *tscnparser.MapData, originalFileName string) string {
+func generateGoCode(mapData *tscnparser.MapData, customLayers []CustomLayer, originalFileName string) string {
 	var sb strings.Builder
 
 	// Generate package and imports
@@ -156,23 +188,21 @@ func generateGoCode(mapData *tscnparser.MapData, originalFileName string) string
 
 	// Generate Layers
 	sb.WriteString("\t\tLayers: []tscnLayer{\n")
-	for _, layer := range mapData.TileMap.Layers {
+	for _, layer := range customLayers {
 		sb.WriteString("\t\t\t{\n")
 		sb.WriteString(fmt.Sprintf("\t\t\t\tID: %d,\n", layer.ID))
 		sb.WriteString(fmt.Sprintf("\t\t\t\tName: \"%s\",\n", layer.Name))
-		sb.WriteString("\t\t\t\tTiles: []tscnTileInstance{\n")
-		for _, tile := range layer.Tiles {
-			sb.WriteString("\t\t\t\t\t{\n")
-			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tTileCoords: tscnPoint{X: %d, Y: %d},\n",
-				tile.TileCoords.X, tile.TileCoords.Y))
-			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tWorldCoords: tscnWorldPoint{X: %.1f, Y: %.1f},\n",
-				tile.WorldCoords.X, tile.WorldCoords.Y))
-			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tSourceID: %d,\n", tile.SourceID))
-			sb.WriteString(fmt.Sprintf("\t\t\t\t\t\tAtlasCoords: tscnPoint{X: %d, Y: %d},\n",
-				tile.AtlasCoords.X, tile.AtlasCoords.Y))
-			sb.WriteString("\t\t\t\t\t},\n")
+		sb.WriteString("\t\t\t\tTileData: []int{")
+		for i, tileValue := range layer.TileData {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			if i%20 == 0 {
+				sb.WriteString("\n\t\t\t\t\t")
+			}
+			sb.WriteString(fmt.Sprintf("%d", tileValue))
 		}
-		sb.WriteString("\t\t\t\t},\n")
+		sb.WriteString("\n\t\t\t\t},\n")
 		sb.WriteString("\t\t\t},\n")
 	}
 	sb.WriteString("\t\t},\n")
@@ -217,8 +247,203 @@ func generateGoCode(mapData *tscnparser.MapData, originalFileName string) string
 
 	sb.WriteString("}\n")
 	sb.WriteString("}\n")
+	sb.WriteString("\n")
+
+	// Add runtime parsing utilities
+	sb.WriteString(generateRuntimeUtilities())
 
 	return sb.String()
+}
+
+// Define our own layer structure with TileData field
+type CustomLayer struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	TileData []int  `json:"tile_data"`
+}
+
+func parseLayersFromTSCN(filename string) ([]CustomLayer, error) {
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	var layers []CustomLayer
+	lines := strings.Split(string(content), "\n")
+
+	currentLayerID := -1
+	currentLayerName := ""
+	var currentTileData []int
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Parse layer name: layer_0/name = "1"
+		if strings.Contains(line, "/name = ") {
+			parts := strings.Split(line, "/name = ")
+			if len(parts) == 2 {
+				layerIDStr := strings.Replace(parts[0], "layer_", "", 1)
+				if layerID, err := strconv.Atoi(layerIDStr); err == nil {
+					currentLayerID = layerID
+					currentLayerName = strings.Trim(parts[1], "\"")
+				}
+			}
+		}
+
+		// Parse tile data: layer_0/tile_data = PackedInt32Array(...)
+		if strings.Contains(line, "/tile_data = PackedInt32Array(") && currentLayerID >= 0 {
+			// Extract the data inside PackedInt32Array(...)
+			start := strings.Index(line, "PackedInt32Array(") + len("PackedInt32Array(")
+			end := strings.LastIndex(line, ")")
+			if end > start {
+				dataStr := line[start:end]
+
+				// Parse the comma-separated integers
+				if dataStr != "" {
+					parts := strings.Split(dataStr, ",")
+					for _, part := range parts {
+						part = strings.TrimSpace(part)
+						if value, err := strconv.Atoi(part); err == nil {
+							currentTileData = append(currentTileData, value)
+						}
+					}
+				}
+
+				// Create layer and add to result
+				layer := CustomLayer{
+					ID:       currentLayerID,
+					Name:     currentLayerName,
+					TileData: currentTileData,
+				}
+				layers = append(layers, layer)
+
+				// Reset for next layer
+				currentLayerID = -1
+				currentLayerName = ""
+				currentTileData = nil
+			}
+		}
+	}
+
+	return layers, nil
+}
+
+// Custom JSON output structure that includes tile data
+type CustomJSONOutput struct {
+	TileMap   CustomTileMapData        `json:"tilemap"`
+	Sprite2Ds []tscnparser.Sprite2DNode `json:"sprite2ds"`
+	Prefabs   []tscnparser.PrefabNode   `json:"prefabs"`
+}
+
+type CustomTileMapData struct {
+	Format   int                       `json:"format"`
+	TileSize tscnparser.TileSize       `json:"tile_size"`
+	TileSet  tscnparser.TileSet        `json:"tileset"`
+	Layers   []CustomLayer             `json:"layers"`
+}
+
+func createCustomJSONOutput(original *tscnparser.MapData, customLayers []CustomLayer) *CustomJSONOutput {
+	return &CustomJSONOutput{
+		TileMap: CustomTileMapData{
+			Format:   original.TileMap.Format,
+			TileSize: original.TileMap.TileSize,
+			TileSet:  original.TileMap.TileSet,
+			Layers:   customLayers,
+		},
+		Sprite2Ds: original.Sprite2Ds,
+		Prefabs:   original.Prefabs,
+	}
+}
+
+func generateRuntimeUtilities() string {
+	return `
+// Runtime utilities for parsing tile data
+
+// TileMapParser provides utilities for parsing compact tile data
+type TileMapParser struct{}
+
+// ParseTileData converts compact tile data array to tile instances
+// The tile_data format is: [x, source_id, atlas_coords_encoded, x2, source_id2, atlas_coords_encoded2, ...]
+// Where atlas_coords_encoded combines atlas X and Y coordinates
+func (p *TileMapParser) ParseTileData(tileData []int, tileSize tscnTileSize) []tscnTileInstance {
+	var tiles []tscnTileInstance
+	
+	for i := 0; i < len(tileData); i += 3 {
+		if i+2 >= len(tileData) {
+			break
+		}
+		
+		tilePos := tileData[i]
+		sourceID := tileData[i+1]
+		atlasEncoded := tileData[i+2]
+		
+		// Decode tile position (Godot uses a specific encoding)
+		tileX := tilePos & 0xFFFF
+		if tileX >= 0x8000 {
+			tileX -= 0x10000 // Handle negative coordinates
+		}
+		tileY := (tilePos >> 16) & 0xFFFF
+		if tileY >= 0x8000 {
+			tileY -= 0x10000 // Handle negative coordinates  
+		}
+		
+		// Decode atlas coordinates (usually just X and Y)
+		atlasX := atlasEncoded & 0xFFFF
+		atlasY := (atlasEncoded >> 16) & 0xFFFF
+		
+		tile := tscnTileInstance{
+			TileCoords: tscnPoint{X: int(tileX), Y: int(tileY)},
+			WorldCoords: tscnWorldPoint{
+				X: float64(tileX * tileSize.Width),
+				Y: float64(tileY * tileSize.Height),
+			},
+			SourceID: sourceID,
+			AtlasCoords: tscnPoint{X: int(atlasX), Y: int(atlasY)},
+		}
+		
+		tiles = append(tiles, tile)
+	}
+	
+	return tiles
+}
+
+// GetTileAt returns the tile at the specified tile coordinates
+func (p *TileMapParser) GetTileAt(tileData []int, targetX, targetY int) (tscnTileInstance, bool) {
+	for i := 0; i < len(tileData); i += 3 {
+		if i+2 >= len(tileData) {
+			break
+		}
+		
+		tilePos := tileData[i]
+		sourceID := tileData[i+1]
+		atlasEncoded := tileData[i+2]
+		
+		// Decode tile position
+		tileX := tilePos & 0xFFFF
+		if tileX >= 0x8000 {
+			tileX -= 0x10000
+		}
+		tileY := (tilePos >> 16) & 0xFFFF
+		if tileY >= 0x8000 {
+			tileY -= 0x10000
+		}
+		
+		if int(tileX) == targetX && int(tileY) == targetY {
+			// Decode atlas coordinates
+			atlasX := atlasEncoded & 0xFFFF
+			atlasY := (atlasEncoded >> 16) & 0xFFFF
+			
+			return tscnTileInstance{
+				TileCoords: tscnPoint{X: int(tileX), Y: int(tileY)},
+				SourceID: sourceID,
+				AtlasCoords: tscnPoint{X: int(atlasX), Y: int(atlasY)},
+			}, true
+		}
+	}
+	
+	return tscnTileInstance{}, false
+}
+`
 }
 
 func generateTypeDefinitions() string {
@@ -273,11 +498,11 @@ type tscnTileInstance struct {
 	AtlasCoords tscnPoint      ` + "`json:\"atlas_coords\"`" + `
 }
 
-// tscnLayer represents a tilemap layer
+// tscnLayer represents a tilemap layer with compact tile data format
 type tscnLayer struct {
-	ID    int                ` + "`json:\"id\"`" + `
-	Name  string             ` + "`json:\"name\"`" + `
-	Tiles []tscnTileInstance ` + "`json:\"tiles\"`" + `
+	ID       int    ` + "`json:\"id\"`" + `
+	Name     string ` + "`json:\"name\"`" + `
+	TileData []int  ` + "`json:\"tile_data\"`" + `
 }
 
 // tscnTileMapData represents the complete tilemap data
