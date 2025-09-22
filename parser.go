@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -23,10 +24,11 @@ type TSCNConverter struct {
 	sources             map[int]*TileSource
 	extResources        map[string]*ExtResource
 	subResourceTextures map[string]string // Maps SubResource ID to ExtResource ID
-	sprite2Ds           []Sprite2DNode    // Collected Sprite2D nodes
-	currentSprite2D     *Sprite2DNode     // Currently parsing Sprite2D node
-	prefabs             []PrefabNode      // Collected Prefab nodes
-	currentPrefab       *PrefabNode       // Currently parsing Prefab node
+	tilePhysicsData     map[string][]Vec2 // Maps SubResource ID to physics points
+	decorators          []DecoratorNode   // Collected Decorator nodes
+	currentDecorator    *DecoratorNode    // Currently parsing Decorator node
+	sprites             []SpriteNode      // Collected Sprite nodes
+	currentSprite       *SpriteNode       // Currently parsing Sprite node
 }
 
 // NewTSCNConverter creates a new converter instance
@@ -36,8 +38,9 @@ func newTSCNConverter() *TSCNConverter {
 		sources:             make(map[int]*TileSource),
 		extResources:        make(map[string]*ExtResource),
 		subResourceTextures: make(map[string]string),
-		sprite2Ds:           []Sprite2DNode{},
-		prefabs:             []PrefabNode{},
+		tilePhysicsData:     make(map[string][]Vec2),
+		decorators:          []DecoratorNode{},
+		sprites:             []SpriteNode{},
 	}
 }
 
@@ -50,6 +53,11 @@ func (c *TSCNConverter) ConvertTSCNToTileMap(filename string) (*MapData, error) 
 	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
+	// Increase buffer size to handle very long lines
+	const maxCapacity = 1024 * 1024 // 1MB buffer
+	buf := make([]byte, maxCapacity)
+	scanner.Buffer(buf, maxCapacity)
+
 	var currentSection string
 	var currentSubResource string
 	var format int
@@ -76,39 +84,39 @@ func (c *TSCNConverter) ConvertTSCNToTileMap(filename string) (*MapData, error) 
 				currentSection = "tilemap"
 			} else if strings.Contains(line, "type=\"Sprite2D\"") {
 				// Finish current nodes if we were processing any
-				if currentSection == "sprite2d" && c.currentSprite2D != nil {
-					c.sprite2Ds = append(c.sprite2Ds, *c.currentSprite2D)
-					c.currentSprite2D = nil
+				if currentSection == "decorator" && c.currentDecorator != nil {
+					c.decorators = append(c.decorators, *c.currentDecorator)
+					c.currentDecorator = nil
 				}
-				if currentSection == "prefab" && c.currentPrefab != nil {
-					c.prefabs = append(c.prefabs, *c.currentPrefab)
-					c.currentPrefab = nil
+				if currentSection == "sprite" && c.currentSprite != nil {
+					c.sprites = append(c.sprites, *c.currentSprite)
+					c.currentSprite = nil
 				}
-				currentSection = "sprite2d"
-				// Initialize new Sprite2D node
-				c.currentSprite2D = c.parseSprite2DNode(line)
+				currentSection = "decorator"
+				// Initialize new Decorator node
+				c.currentDecorator = c.parseDecoratorNode(line)
 			} else if strings.Contains(line, "instance=ExtResource") {
 				// Finish current nodes if we were processing any
-				if currentSection == "sprite2d" && c.currentSprite2D != nil {
-					c.sprite2Ds = append(c.sprite2Ds, *c.currentSprite2D)
-					c.currentSprite2D = nil
+				if currentSection == "decorator" && c.currentDecorator != nil {
+					c.decorators = append(c.decorators, *c.currentDecorator)
+					c.currentDecorator = nil
 				}
-				if currentSection == "prefab" && c.currentPrefab != nil {
-					c.prefabs = append(c.prefabs, *c.currentPrefab)
-					c.currentPrefab = nil
+				if currentSection == "sprite" && c.currentSprite != nil {
+					c.sprites = append(c.sprites, *c.currentSprite)
+					c.currentSprite = nil
 				}
-				currentSection = "prefab"
-				// Initialize new Prefab node
-				c.currentPrefab = c.parsePrefabNode(line)
+				currentSection = "sprite"
+				// Initialize new Sprite node
+				c.currentSprite = c.parseSpriteNode(line)
 			} else {
 				// Finish current nodes if we're leaving their sections
-				if currentSection == "sprite2d" && c.currentSprite2D != nil {
-					c.sprite2Ds = append(c.sprite2Ds, *c.currentSprite2D)
-					c.currentSprite2D = nil
+				if currentSection == "decorator" && c.currentDecorator != nil {
+					c.decorators = append(c.decorators, *c.currentDecorator)
+					c.currentDecorator = nil
 				}
-				if currentSection == "prefab" && c.currentPrefab != nil {
-					c.prefabs = append(c.prefabs, *c.currentPrefab)
-					c.currentPrefab = nil
+				if currentSection == "sprite" && c.currentSprite != nil {
+					c.sprites = append(c.sprites, *c.currentSprite)
+					c.currentSprite = nil
 				}
 				currentSection = "other"
 			}
@@ -121,10 +129,10 @@ func (c *TSCNConverter) ConvertTSCNToTileMap(filename string) (*MapData, error) 
 			c.parseExtResource(line)
 		case "sub_resource":
 			c.parseSubResource(line, currentSubResource)
-		case "sprite2d":
-			c.parseSprite2DProperty(line)
-		case "prefab":
-			c.parsePrefabProperty(line)
+		case "decorator":
+			c.parseDecoratorProperty(line)
+		case "sprite":
+			c.parseSpriteProperty(line)
 		case "tilemap":
 			if strings.HasPrefix(line, "format =") {
 				format = c.extractIntValue(line)
@@ -137,14 +145,14 @@ func (c *TSCNConverter) ConvertTSCNToTileMap(filename string) (*MapData, error) 
 		}
 	}
 
-	// Handle any remaining Sprite2D node
-	if c.currentSprite2D != nil {
-		c.sprite2Ds = append(c.sprite2Ds, *c.currentSprite2D)
+	// Handle any remaining Decorator node
+	if c.currentDecorator != nil {
+		c.decorators = append(c.decorators, *c.currentDecorator)
 	}
 
-	// Handle any remaining Prefab node
-	if c.currentPrefab != nil {
-		c.prefabs = append(c.prefabs, *c.currentPrefab)
+	// Handle any remaining Sprite node
+	if c.currentSprite != nil {
+		c.sprites = append(c.sprites, *c.currentSprite)
 	}
 
 	if err := scanner.Err(); err != nil {
@@ -156,7 +164,10 @@ func (c *TSCNConverter) ConvertTSCNToTileMap(filename string) (*MapData, error) 
 	for _, source := range c.sources {
 		tilesetSources = append(tilesetSources, *source)
 	}
-
+	// sort tilesetSources
+	sort.Slice(tilesetSources, func(i, j int) bool {
+		return tilesetSources[i].ID < tilesetSources[j].ID
+	})
 	return &MapData{
 		TileMap: TileMapData{
 			Format:   format,
@@ -166,8 +177,8 @@ func (c *TSCNConverter) ConvertTSCNToTileMap(filename string) (*MapData, error) 
 			},
 			Layers: layers,
 		},
-		Sprite2Ds: c.sprite2Ds,
-		Prefabs:   c.prefabs,
+		Decorators: c.decorators,
+		Sprites:    c.sprites,
 	}, nil
 }
 
@@ -235,11 +246,13 @@ func (c *TSCNConverter) parseSubResource(line, resourceID string) {
 			c.subResourceTextures[resourceID] = extResourceID
 		}
 	} else if strings.HasPrefix(line, "0:0/0/physics_layer_0/polygon_0/points") {
-		// Parse collision polygon to determine tile size
+		// Parse collision polygon to determine tile size and store physics data
 		points := c.extractPolygonPoints(line)
 		if len(points) >= 4 {
 			// Calculate tile size from collision box
 			c.tileSize = c.calculateTileSizeFromPoints(points)
+			// Store physics data for this resource
+			c.tilePhysicsData[resourceID] = points
 		}
 	} else if strings.HasPrefix(line, "sources/") {
 		// Parse tileset sources
@@ -256,10 +269,18 @@ func (c *TSCNConverter) parseSubResource(line, resourceID string) {
 				}
 			}
 
+			// Get physics data for this tile source
+			var physicsData PhysicsData
+			if subResourceID != "" {
+				if points, hasPhysics := c.tilePhysicsData[subResourceID]; hasPhysics {
+					physicsData = PhysicsData{CollisionPoints: points}
+				}
+			}
+
 			c.sources[sourceID] = &TileSource{
 				ID:          sourceID,
 				TexturePath: texturePath,
-				Tiles:       []TileInfo{{AtlasCoords: Point{X: 0, Y: 0}}},
+				Tiles:       []TileInfo{{AtlasCoords: Vec2i{X: 0, Y: 0}, Physics: physicsData}},
 			}
 		}
 	}
@@ -315,60 +336,28 @@ func (c *TSCNConverter) parseTileData(layerID int, data []int) Layer {
 		Tiles: []TileInstance{},
 	}
 
-	// Process data in groups of 3: [position, source_id, atlas_coords]
-	for i := 0; i < len(data); i += 3 {
-		if i+2 >= len(data) {
+	// Process data in groups of 5: [source_id, tile_x, tile_y, atlas_x, atlas_y]
+	for i := 0; i < len(data); i += 5 {
+		if i+4 >= len(data) {
 			break
 		}
 
-		encodedPos := data[i]
-		sourceID := data[i+1]
-		atlasCoords := data[i+2]
-
-		// Decode tile position
-		tileX, tileY := c.decodeTilePosition(encodedPos)
-
-		// Calculate world coordinates
-		worldX := float64(tileX * c.tileSize.Width)
-		worldY := float64(tileY * c.tileSize.Height)
-
-		// Decode atlas coordinates (simplified - assuming single atlas coord)
-		atlasX, atlasY := c.decodeAtlasCoords(atlasCoords)
+		sourceID := data[i]
+		tileX := data[i+1]
+		tileY := data[i+2]
+		atlasX := data[i+3]
+		atlasY := data[i+4]
 
 		tile := TileInstance{
-			TileCoords:  Point{X: tileX, Y: tileY},
-			WorldCoords: WorldPoint{X: worldX, Y: worldY},
+			TileCoords:  Vec2i{X: tileX, Y: tileY},
 			SourceID:    sourceID,
-			AtlasCoords: Point{X: atlasX, Y: atlasY},
+			AtlasCoords: Vec2i{X: atlasX, Y: atlasY},
 		}
 
 		layer.Tiles = append(layer.Tiles, tile)
 	}
 
 	return layer
-}
-
-// decodeTilePosition decodes the encoded tile position
-func (c *TSCNConverter) decodeTilePosition(encoded int) (int, int) {
-	x := (encoded >> 16) & 0xFFFF
-	y := encoded & 0xFFFF
-
-	// Convert from unsigned to signed if necessary
-	if x >= 32768 {
-		x -= 65536
-	}
-	if y >= 32768 {
-		y -= 65536
-	}
-
-	return x, y
-}
-
-// decodeAtlasCoords decodes atlas coordinates (simplified)
-func (c *TSCNConverter) decodeAtlasCoords(_ int) (int, int) {
-	// For now, assuming simple case where encoded value represents atlas coords
-	// In full implementation, this would need proper decoding based on Godot's format
-	return 0, 0
 }
 
 // extractExtResourceID extracts ExtResource ID from texture assignment
@@ -413,16 +402,16 @@ func (c *TSCNConverter) extractSourceID(line string) int {
 	return -1
 }
 
-func (c *TSCNConverter) extractPolygonPoints(line string) []WorldPoint {
+func (c *TSCNConverter) extractPolygonPoints(line string) []Vec2 {
 	re := regexp.MustCompile(`PackedVector2Array\(([^)]+)\)`)
 	matches := re.FindStringSubmatch(line)
 	if len(matches) < 2 {
-		return []WorldPoint{}
+		return []Vec2{}
 	}
 
 	content := matches[1]
 	parts := strings.Split(content, ",")
-	var points []WorldPoint
+	var points []Vec2
 
 	for i := 0; i < len(parts); i += 2 {
 		if i+1 >= len(parts) {
@@ -433,14 +422,14 @@ func (c *TSCNConverter) extractPolygonPoints(line string) []WorldPoint {
 		y, err2 := strconv.ParseFloat(strings.TrimSpace(parts[i+1]), 64)
 
 		if err1 == nil && err2 == nil {
-			points = append(points, WorldPoint{X: x, Y: y})
+			points = append(points, Vec2{X: x, Y: y})
 		}
 	}
 
 	return points
 }
 
-func (c *TSCNConverter) calculateTileSizeFromPoints(points []WorldPoint) TileSize {
+func (c *TSCNConverter) calculateTileSizeFromPoints(points []Vec2) TileSize {
 	if len(points) < 4 {
 		return c.tileSize // Return default
 	}
@@ -470,11 +459,77 @@ func (c *TSCNConverter) calculateTileSizeFromPoints(points []WorldPoint) TileSiz
 	}
 }
 
-// parseSprite2DNode creates a new Sprite2D node from the node declaration line
-func (c *TSCNConverter) parseSprite2DNode(line string) *Sprite2DNode {
+// parseDecoratorNode creates a new Decorator node from the node declaration line
+func (c *TSCNConverter) parseDecoratorNode(line string) *DecoratorNode {
 	// Extract node name and parent from line like: [node name="Cloud1" type="Sprite2D" parent="Decorations/Clouds"]
-	sprite := &Sprite2DNode{
-		TexturePath: "unknown", // Default until we find texture property
+	decorator := &DecoratorNode{
+		Path: "unknown", // Default until we find texture property
+	}
+
+	// Extract name
+	if re := regexp.MustCompile(`name="([^"]+)"`); re != nil {
+		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+			decorator.Name = matches[1]
+		}
+	}
+
+	// Extract parent
+	if re := regexp.MustCompile(`parent="([^"]+)"`); re != nil {
+		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+			decorator.Parent = matches[1]
+		}
+	}
+
+	return decorator
+}
+
+// parseDecoratorProperty parses properties of the current Decorator node
+func (c *TSCNConverter) parseDecoratorProperty(line string) {
+	if c.currentDecorator == nil {
+		return
+	}
+
+	if strings.HasPrefix(line, "position = Vector2(") {
+		// Extract position coordinates
+		position := c.extractVector2(line)
+		position.Y = -position.Y
+		c.currentDecorator.Position = position
+	} else if strings.HasPrefix(line, "texture = ExtResource(") {
+		// Extract texture ExtResource ID and resolve path
+		extResourceID := c.extractExtResourceID(line)
+		if extRes, exists := c.extResources[extResourceID]; exists {
+			c.currentDecorator.Path = extRes.Path
+		}
+	} else if strings.HasPrefix(line, "z_index = ") {
+		// Extract z_index
+		c.currentDecorator.ZIndex = c.extractIntValue(line)
+	}
+}
+
+// extractVector2 extracts Vector2 coordinates from a line like "position = Vector2(-120, -48)"
+func (c *TSCNConverter) extractVector2(line string) Vec2 {
+	re := regexp.MustCompile(`Vector2\(([^,]+),\s*([^)]+)\)`)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) < 3 {
+		return Vec2{X: 0, Y: 0}
+	}
+
+	x, err1 := strconv.ParseFloat(strings.TrimSpace(matches[1]), 64)
+	y, err2 := strconv.ParseFloat(strings.TrimSpace(matches[2]), 64)
+
+	if err1 != nil || err2 != nil {
+		return Vec2{X: 0, Y: 0}
+	}
+
+	return Vec2{X: x, Y: y}
+}
+
+// parseSpriteNode creates a new Sprite node from the node declaration line
+func (c *TSCNConverter) parseSpriteNode(line string) *SpriteNode {
+	// Extract node name, parent, and instance from line like: [node name="Brick" parent="Environment/Platforms/Platform1" instance=ExtResource("6_vt4yb")]
+	sprite := &SpriteNode{
+		Path:       "unknown", // Default until we resolve ExtResource
+		Properties: make(map[string]any),
 	}
 
 	// Extract name
@@ -491,109 +546,45 @@ func (c *TSCNConverter) parseSprite2DNode(line string) *Sprite2DNode {
 		}
 	}
 
-	return sprite
-}
-
-// parseSprite2DProperty parses properties of the current Sprite2D node
-func (c *TSCNConverter) parseSprite2DProperty(line string) {
-	if c.currentSprite2D == nil {
-		return
-	}
-
-	if strings.HasPrefix(line, "position = Vector2(") {
-		// Extract position coordinates
-		position := c.extractVector2(line)
-		c.currentSprite2D.Position = position
-	} else if strings.HasPrefix(line, "texture = ExtResource(") {
-		// Extract texture ExtResource ID and resolve path
-		extResourceID := c.extractExtResourceID(line)
-		if extRes, exists := c.extResources[extResourceID]; exists {
-			c.currentSprite2D.TexturePath = extRes.Path
-		}
-	} else if strings.HasPrefix(line, "z_index = ") {
-		// Extract z_index
-		c.currentSprite2D.ZIndex = c.extractIntValue(line)
-	}
-}
-
-// extractVector2 extracts Vector2 coordinates from a line like "position = Vector2(-120, -48)"
-func (c *TSCNConverter) extractVector2(line string) WorldPoint {
-	re := regexp.MustCompile(`Vector2\(([^,]+),\s*([^)]+)\)`)
-	matches := re.FindStringSubmatch(line)
-	if len(matches) < 3 {
-		return WorldPoint{X: 0, Y: 0}
-	}
-
-	x, err1 := strconv.ParseFloat(strings.TrimSpace(matches[1]), 64)
-	y, err2 := strconv.ParseFloat(strings.TrimSpace(matches[2]), 64)
-
-	if err1 != nil || err2 != nil {
-		return WorldPoint{X: 0, Y: 0}
-	}
-
-	return WorldPoint{X: x, Y: y}
-}
-
-// parsePrefabNode creates a new Prefab node from the node declaration line
-func (c *TSCNConverter) parsePrefabNode(line string) *PrefabNode {
-	// Extract node name, parent, and instance from line like: [node name="Brick" parent="Environment/Platforms/Platform1" instance=ExtResource("6_vt4yb")]
-	prefab := &PrefabNode{
-		PrefabPath: "unknown", // Default until we resolve ExtResource
-		Properties: make(map[string]interface{}),
-	}
-
-	// Extract name
-	if re := regexp.MustCompile(`name="([^"]+)"`); re != nil {
-		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
-			prefab.Name = matches[1]
-		}
-	}
-
-	// Extract parent
-	if re := regexp.MustCompile(`parent="([^"]+)"`); re != nil {
-		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
-			prefab.Parent = matches[1]
-		}
-	}
-
 	// Extract instance ExtResource and resolve path
 	if re := regexp.MustCompile(`instance=ExtResource\("([^"]+)"\)`); re != nil {
 		if matches := re.FindStringSubmatch(line); len(matches) > 1 {
 			extResourceID := matches[1]
 			if extRes, exists := c.extResources[extResourceID]; exists {
-				prefab.PrefabPath = extRes.Path
+				sprite.Path = extRes.Path
 			}
 		}
 	}
 
-	return prefab
+	return sprite
 }
 
-// parsePrefabProperty parses properties of the current Prefab node
-func (c *TSCNConverter) parsePrefabProperty(line string) {
-	if c.currentPrefab == nil {
+// parseSpriteProperty parses properties of the current Sprite node
+func (c *TSCNConverter) parseSpriteProperty(line string) {
+	if c.currentSprite == nil {
 		return
 	}
 
 	if strings.HasPrefix(line, "position = Vector2(") {
 		// Extract position coordinates
 		position := c.extractVector2(line)
-		c.currentPrefab.Position = position
+		position.Y = -position.Y
+		c.currentSprite.Position = position
 	} else if strings.HasPrefix(line, "gid = ") {
 		// Extract gid (common in enemy nodes)
 		gidValue := c.extractIntValue(line)
-		c.currentPrefab.Properties["gid"] = gidValue
+		c.currentSprite.Properties["gid"] = gidValue
 	} else if strings.HasPrefix(line, "zoom = Vector2(") {
 		// Extract zoom for Camera2D
 		zoom := c.extractVector2(line)
-		c.currentPrefab.Properties["zoom"] = zoom
+		c.currentSprite.Properties["zoom"] = zoom
 	} else if strings.Contains(line, " = ") && !strings.HasPrefix(line, "[") {
 		// Generic property extraction
 		parts := strings.SplitN(line, " = ", 2)
 		if len(parts) == 2 {
 			key := strings.TrimSpace(parts[0])
 			value := strings.TrimSpace(parts[1])
-			c.currentPrefab.Properties[key] = value
+			c.currentSprite.Properties[key] = value
 		}
 	}
 }
