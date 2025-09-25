@@ -1,6 +1,8 @@
 package tscnparser
 
-import "errors"
+import (
+	"errors"
+)
 
 func Parse(inputFile string) (*MapData, error) {
 
