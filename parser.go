@@ -44,8 +44,134 @@ func newTSCNConverter() *TSCNConverter {
 	}
 }
 
+func parseLayersFromTSCN(filename string) ([]Layer, error) {
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, err
+	}
+
+	var layers []Layer
+	lines := strings.Split(string(content), "\n")
+
+	currentLayerID := -1
+	currentLayerName := ""
+	currentZIndex := 0
+	var currentTileData []int
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+
+		// Parse layer name: layer_0/name = "1"
+		if strings.Contains(line, "/name = ") {
+			parts := strings.Split(line, "/name = ")
+			if len(parts) == 2 {
+				layerIDStr := strings.Replace(parts[0], "layer_", "", 1)
+				if layerID, err := strconv.Atoi(layerIDStr); err == nil {
+					currentLayerID = layerID
+					currentLayerName = strings.Trim(parts[1], "\"")
+				}
+			}
+		}
+
+		// Parse layer z_index: layer_0/z_index = -3
+		if strings.Contains(line, "/z_index = ") {
+			parts := strings.Split(line, "/z_index = ")
+			if len(parts) == 2 {
+				if zIndex, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+					currentZIndex = zIndex
+				}
+			}
+		}
+
+		// Parse tile data: layer_0/tile_data = PackedInt32Array(...)
+		if strings.Contains(line, "/tile_data = PackedInt32Array(") && currentLayerID >= 0 {
+			// Extract the data inside PackedInt32Array(...)
+			start := strings.Index(line, "PackedInt32Array(") + len("PackedInt32Array(")
+			end := strings.LastIndex(line, ")")
+			if end > start {
+				dataStr := line[start:end]
+
+				// Parse the comma-separated integers
+				if dataStr != "" {
+					parts := strings.Split(dataStr, ",")
+					for _, part := range parts {
+						part = strings.TrimSpace(part)
+						if value, err := strconv.Atoi(part); err == nil {
+							currentTileData = append(currentTileData, value)
+						}
+					}
+				}
+
+				// Convert from old format [encoded_position, source_id, atlas_coords] to new format [source_id, tile_x, tile_y, atlas_x, atlas_y]
+				convertedTileData := convertTileDataFormat(currentTileData)
+
+				// Create layer and add to result
+				layer := Layer{
+					ID:       currentLayerID,
+					Name:     currentLayerName,
+					ZIndex:   currentZIndex,
+					TileData: convertedTileData,
+				}
+				layers = append(layers, layer)
+
+				// Reset for next layer
+				currentLayerID = -1
+				currentLayerName = ""
+				currentZIndex = 0
+				currentTileData = nil
+			}
+		}
+	}
+
+	return layers, nil
+}
+
+// convertTileDataFormat converts tile data from old format to new format
+// Old format: [tilePos, source_id, atlas_coords_encoded] (3 elements per tile)
+// New format: [source_id, tile_x, tile_y, atlas_x, atlas_y] (5 elements per tile)
+// This function uses the original parsing logic from internal/tilemap/tilemap.go before commit f81157b
+func convertTileDataFormat(tileData []int) []int {
+	var newData []int
+	lenght := len(tileData)
+
+	// Original parsing logic from internal/tilemap/tilemap.go
+	for i := 0; i < lenght; i += 3 {
+		if i+2 >= lenght {
+			break
+		}
+		tilePos := tileData[i]
+		sourceID := tileData[i+1]
+		atlasEncoded := tileData[i+2]
+
+		// Decode tile position (Godot uses a specific encoding)
+		tileX := tilePos & 0xFFFF
+		if tileX >= 0x8000 {
+			tileX -= 0x10000 // Handle negative coordinates
+		}
+		tileY := (tilePos >> 16) & 0xFFFF
+		if tileY >= 0x8000 {
+			tileY -= 0x10000 // Handle negative coordinates
+		}
+
+		// Decode atlas coordinates (usually just X and Y)
+		atlasX := atlasEncoded & 0xFFFF
+		atlasY := (atlasEncoded >> 16) & 0xFFFF
+
+		// Append in new format: [source_id, tile_x, tile_y, atlas_x, atlas_y]
+		newData = append(newData, sourceID, tileX, -tileY, atlasX, atlasY)
+	}
+
+	return newData
+}
+
 // ConvertTSCNToTileMap converts a TSCN file to TileMap data structure
 func (c *TSCNConverter) ConvertTSCNToTileMap(filename string) (*MapData, error) {
+	data, err := c.convertTSCNToTileMap(filename)
+	// Parse layer data directly from TSCN file since tscnparser doesn't handle it properly
+	data.TileMap.Layers, _ = parseLayersFromTSCN(filename)
+	return data, err
+}
+func (c *TSCNConverter) convertTSCNToTileMap(filename string) (*MapData, error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)

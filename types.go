@@ -49,9 +49,11 @@ type TileInstance struct {
 
 // Layer represents a tilemap layer
 type Layer struct {
-	ID    int            `json:"id"`
-	Name  string         `json:"name"`
-	Tiles []TileInstance `json:"tiles"`
+	ID       int            `json:"id"`
+	Name     string         `json:"name"`
+	Tiles    []TileInstance `-`
+	ZIndex   int            `json:"z_index"`
+	TileData []int          `json:"tile_data"`
 }
 
 // TileMapData represents the complete tilemap data
@@ -73,10 +75,10 @@ type DecoratorNode struct {
 
 // SpriteNode represents an instantiated prefab node in the scene
 type SpriteNode struct {
-	Name       string                 `json:"name"`
-	Parent     string                 `json:"parent"`
-	Position   Vec2                   `json:"position"`
-	Path       string                 `json:"path"`
+	Name       string         `json:"name"`
+	Parent     string         `json:"parent"`
+	Position   Vec2           `json:"position"`
+	Path       string         `json:"path"`
 	Properties map[string]any `json:"properties,omitempty"`
 }
 
