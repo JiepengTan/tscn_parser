@@ -7,6 +7,9 @@ import (
 func SetTileSize(size int) {
 	tilemapTileSize = TileSize{size, size}
 }
+func SetOffset(x, y float64) {
+	tilemapOffset = Vec2{x, y}
+}
 func Parse(inputFile string) (*MapData, error) {
 
 	if inputFile == "" {

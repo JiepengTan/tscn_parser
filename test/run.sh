@@ -23,5 +23,5 @@ cd $PROJ_DIR
 go mod tidy
 
 cp -rf "$INPUT_TSCN_PATH" main.tscn
-go run . -input  main.tscn -replacements "replacements.json" -tilesize 16
+go run . -input  main.tscn -replacements "replacements.json" -tilesize 16 -offsetx 72 -offsety 392
 cp -rf main_tilemap.json "$CP_DESTINATION_PATH"

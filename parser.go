@@ -20,6 +20,7 @@ type ExtResource struct {
 
 var (
 	tilemapTileSize = TileSize{Width: 16, Height: 16}
+	tilemapOffset   = Vec2{X: 0, Y: 0}
 )
 
 // TSCNConverter handles conversion from TSCN to TileMap JSON
@@ -137,6 +138,8 @@ func parseLayersFromTSCN(filename string) ([]Layer, error) {
 func convertTileDataFormat(tileData []int) []int {
 	var newData []int
 	lenght := len(tileData)
+	tileOffsetX, tileOffsetY := int(tilemapOffset.X/float64(tilemapTileSize.Width)), int(tilemapOffset.Y/float64(tilemapTileSize.Height))
+	println("tileOffsetX , tileOffsetY", tileOffsetX, tileOffsetY)
 
 	// Original parsing logic from internal/tilemap/tilemap.go
 	for i := 0; i < lenght; i += 3 {
@@ -166,6 +169,9 @@ func convertTileDataFormat(tileData []int) []int {
 		// Decode atlas coordinates (usually just X and Y)
 		atlasX := atlasEncoded & 0xFFFF
 		atlasY := (atlasEncoded >> 16) & 0xFFFF
+
+		tileX += tileOffsetX
+		tileY += tileOffsetY
 		tileTotalCount++
 		// Append in new format: [source_id, tile_x, tile_y, atlas_x, atlas_y]
 		newData = append(newData, sourceID, tileX, -tileY, atlasX, atlasY)
@@ -711,6 +717,8 @@ func (c *TSCNConverter) parseSpriteProperty(line string) {
 	if strings.HasPrefix(line, "position = Vector2(") {
 		// Extract position coordinates
 		position := c.extractVector2(line)
+		position.X += tilemapOffset.X
+		position.Y += tilemapOffset.Y
 		position.Y = -position.Y
 		c.currentSprite.Position = position
 	} else if strings.HasPrefix(line, "gid = ") {
