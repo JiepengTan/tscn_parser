@@ -26,6 +26,8 @@ func main() {
 	var outputFile = flag.String("output", "", "Output JSON file path")
 	var tileSize = flag.Int("tilesize", 16, "Tile size")
 	var replacementsFile = flag.String("replacements", "", "JSON file containing replacement rules")
+	var offsetX = flag.Int("offsetx", 0, "X offset")
+	var offsetY = flag.Int("offsety", 0, "Y offset")
 	flag.Parse()
 
 	if *inputFile == "" {
@@ -39,7 +41,7 @@ func main() {
 	}
 
 	tscnparser.SetTileSize(int(*tileSize))
-	tscnparser.SetOffset(72, 392)
+	tscnparser.SetOffset(*offsetX, *offsetY)
 
 	// Parse TSCN file
 	tileMapData, err := tscnparser.Parse(*inputFile)
