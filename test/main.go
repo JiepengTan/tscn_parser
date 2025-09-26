@@ -38,13 +38,15 @@ func main() {
 		*outputFile = (*inputFile)[:len(*inputFile)-len(ext)] + "_tilemap.json"
 	}
 
+	tscnparser.SetTileSize(int(*tileSize))
+	tscnparser.SetOffset(72, 392)
+
 	// Parse TSCN file
 	tileMapData, err := tscnparser.Parse(*inputFile)
 	if err != nil {
 		log.Fatalf("Error converting TSCN: %v", err)
 	}
 
-	tscnparser.SetTileSize(int(*tileSize))
 	// Output to JSON with custom layers if available
 	var jsonData []byte
 	jsonData, err = json.MarshalIndent(tileMapData, "", "  ")
