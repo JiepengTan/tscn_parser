@@ -24,6 +24,7 @@ type ReplacementConfig struct {
 func main() {
 	var inputFile = flag.String("input", "", "Input TSCN file path")
 	var outputFile = flag.String("output", "", "Output JSON file path")
+	var tileSize = flag.Int("tilesize", 16, "Tile size")
 	var replacementsFile = flag.String("replacements", "", "JSON file containing replacement rules")
 	flag.Parse()
 
@@ -43,6 +44,7 @@ func main() {
 		log.Fatalf("Error converting TSCN: %v", err)
 	}
 
+	tscnparser.SetTileSize(int(*tileSize))
 	// Output to JSON with custom layers if available
 	var jsonData []byte
 	jsonData, err = json.MarshalIndent(tileMapData, "", "  ")
