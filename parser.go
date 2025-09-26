@@ -18,6 +18,10 @@ type ExtResource struct {
 	UID  string `json:"uid,omitempty"`
 }
 
+var (
+	tilemapTileSize = TileSize{Width: 16, Height: 16}
+)
+
 // TSCNConverter handles conversion from TSCN to TileMap JSON
 type TSCNConverter struct {
 	tileSize            TileSize
@@ -122,7 +126,7 @@ func parseLayersFromTSCN(filename string) ([]Layer, error) {
 			}
 		}
 	}
-
+	println("minTile ,max Tile", minYTile, maxYTile, "diff ", maxYTile-minYTile, "total ", tileTotalCount)
 	return layers, nil
 }
 
@@ -153,10 +157,16 @@ func convertTileDataFormat(tileData []int) []int {
 			tileY -= 0x10000 // Handle negative coordinates
 		}
 
+		if tileY < minYTile {
+			minYTile = tileY
+		}
+		if tileY > maxYTile {
+			maxYTile = tileY
+		}
 		// Decode atlas coordinates (usually just X and Y)
 		atlasX := atlasEncoded & 0xFFFF
 		atlasY := (atlasEncoded >> 16) & 0xFFFF
-
+		tileTotalCount++
 		// Append in new format: [source_id, tile_x, tile_y, atlas_x, atlas_y]
 		newData = append(newData, sourceID, tileX, -tileY, atlasX, atlasY)
 	}
@@ -171,6 +181,12 @@ func (c *TSCNConverter) ConvertTSCNToTileMap(filename string) (*MapData, error) 
 	data.TileMap.Layers, _ = parseLayersFromTSCN(filename)
 	return data, err
 }
+
+var (
+	minYTile, maxYTile int
+	tileTotalCount     int
+)
+
 func (c *TSCNConverter) convertTSCNToTileMap(filename string) (*MapData, error) {
 	file, err := os.Open(filename)
 	if err != nil {
@@ -188,7 +204,8 @@ func (c *TSCNConverter) convertTSCNToTileMap(filename string) (*MapData, error) 
 	var currentSubResource string
 	var format int
 	var layers []Layer
-
+	minYTile = 1000000
+	maxYTile = -1000000
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 
@@ -297,7 +314,7 @@ func (c *TSCNConverter) convertTSCNToTileMap(filename string) (*MapData, error) 
 	return &MapData{
 		TileMap: TileMapData{
 			Format:   format,
-			TileSize: c.tileSize,
+			TileSize: tilemapTileSize,
 			TileSet: TileSet{
 				Sources: tilesetSources,
 			},

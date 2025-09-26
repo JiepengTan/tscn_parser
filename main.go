@@ -4,6 +4,9 @@ import (
 	"errors"
 )
 
+func SetTileSize(size int) {
+	tilemapTileSize = TileSize{size, size}
+}
 func Parse(inputFile string) (*MapData, error) {
 
 	if inputFile == "" {
