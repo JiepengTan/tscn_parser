@@ -58,10 +58,11 @@ type Layer struct {
 
 // TileMapData represents the complete tilemap data
 type TileMapData struct {
-	Format   int      `json:"format"`
-	TileSize TileSize `json:"tile_size"`
-	TileSet  TileSet  `json:"tileset"`
-	Layers   []Layer  `json:"layers"`
+	Format        int      `json:"format"`
+	TileSize      TileSize `json:"tile_size"`
+	TileSet       TileSet  `json:"tileset"`
+	Layers        []Layer  `json:"layers"`
+	WorldTileSize TileSize `json:"world_tile_size"`
 }
 
 // DecoratorNode represents a Sprite2D node in the scene

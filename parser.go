@@ -127,7 +127,6 @@ func parseLayersFromTSCN(filename string) ([]Layer, error) {
 			}
 		}
 	}
-	println("minTile ,max Tile", minYTile, maxYTile, "diff ", maxYTile-minYTile, "total ", tileTotalCount)
 	return layers, nil
 }
 
@@ -139,8 +138,6 @@ func convertTileDataFormat(tileData []int) []int {
 	var newData []int
 	lenght := len(tileData)
 	tileOffsetX, tileOffsetY := int(tilemapOffset.X/float64(tilemapTileSize.Width)), int(tilemapOffset.Y/float64(tilemapTileSize.Height))
-	println("tileOffsetX , tileOffsetY", tileOffsetX, tileOffsetY)
-
 	// Original parsing logic from internal/tilemap/tilemap.go
 	for i := 0; i < lenght; i += 3 {
 		if i+2 >= lenght {
@@ -160,11 +157,17 @@ func convertTileDataFormat(tileData []int) []int {
 			tileY -= 0x10000 // Handle negative coordinates
 		}
 
-		if tileY < minYTile {
-			minYTile = tileY
+		if tileX < minTileX {
+			minTileX = tileX
 		}
-		if tileY > maxYTile {
-			maxYTile = tileY
+		if tileX > maxTileX {
+			maxTileX = tileX
+		}
+		if tileY < minTileY {
+			minTileY = tileY
+		}
+		if tileY > maxTileY {
+			maxTileY = tileY
 		}
 		// Decode atlas coordinates (usually just X and Y)
 		atlasX := atlasEncoded & 0xFFFF
@@ -185,11 +188,20 @@ func (c *TSCNConverter) ConvertTSCNToTileMap(filename string) (*MapData, error) 
 	data, err := c.convertTSCNToTileMap(filename)
 	// Parse layer data directly from TSCN file since tscnparser doesn't handle it properly
 	data.TileMap.Layers, _ = parseLayersFromTSCN(filename)
+
+	diffX := maxTileX - minTileX + 1
+	diffY := maxTileY - minTileY + 1
+	//println("diffX", diffX, "diffY", diffY, "minX", minTileX, "minY", minTileY, "totalTile", (diffX * diffY), "tileMutilLayerTotalCount ", tileTotalCount)
+	if diffX%2 != 0 || diffY%2 != 0 {
+		return data, fmt.Errorf("地图数据 的宽和高必须是偶数大小  当前tile宽 %d 当前tile高 %d", diffX, diffY)
+	}
+	data.TileMap.WorldTileSize = TileSize{Width: diffX, Height: diffY}
 	return data, err
 }
 
 var (
-	minYTile, maxYTile int
+	minTileX, maxTileX int
+	minTileY, maxTileY int
 	tileTotalCount     int
 )
 
@@ -210,8 +222,10 @@ func (c *TSCNConverter) convertTSCNToTileMap(filename string) (*MapData, error) 
 	var currentSubResource string
 	var format int
 	var layers []Layer
-	minYTile = 1000000
-	maxYTile = -1000000
+	minTileX = 1000000
+	maxTileX = -1000000
+	minTileY = 1000000
+	maxTileY = -1000000
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 

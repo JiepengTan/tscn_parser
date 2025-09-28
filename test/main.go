@@ -68,9 +68,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Error writing output file: %v", err)
 	}
-	tileMapData = &tscnparser.MapData{}
-	json.Unmarshal([]byte(jsonStr), tileMapData)
-
 	fmt.Printf("Successfully converted %s to %s\n", *inputFile, *outputFile)
 }
 
