@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Default parameters
-DEFAULT_INPUT_TSCN="/Users/tjp/projects/robot/spx/cmd/tscnparser/export2/main.tscn"
+DEFAULT_INPUT_TSCN="/Users/tjp/projects/robot/spx/cmd/tscnparser/export/main.tscn"
 DEFAULT_CP_DESTINATION="/Users/tjp/projects/robot/spx/spx_demos/19_tilemap/assets/tilemaps/scene1.json"
 
 # Use provided parameters or defaults
@@ -23,5 +23,5 @@ cd $PROJ_DIR
 go mod tidy
 
 cp -rf "$INPUT_TSCN_PATH" main.tscn
-go run . -input  main.tscn -replacements "replacements.json" -tilesize 16 -offsetx 72 -offsety 392
+go run . -input  main.tscn -replacements "replacements.json" -tilesize 16 -offsetx 80 -offsety 384
 cp -rf main_tilemap.json "$CP_DESTINATION_PATH"
