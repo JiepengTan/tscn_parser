@@ -11,6 +11,18 @@ type Vec2 struct {
 	Y float64 `json:"y"`
 }
 
+func (v *Vec2) Add(other Vec2) {
+	v.X += other.X
+	v.Y += other.Y
+}
+func (v *Vec2) Sub(other Vec2) {
+	v.X -= other.X
+	v.Y -= other.Y
+}
+func (v *Vec2) InvertY() {
+	v.Y = -v.Y
+}
+
 // TileSize represents the dimensions of a tile
 type TileSize struct {
 	Width  int `json:"width"`
@@ -67,11 +79,17 @@ type TileMapData struct {
 
 // DecoratorNode represents a Sprite2D node in the scene
 type DecoratorNode struct {
-	Name     string `json:"name"`
-	Parent   string `json:"parent"`
-	Position Vec2   `json:"position"`
-	Path     string `json:"path"`
-	ZIndex   int    `json:"z_index,omitempty"`
+	Name           string    `json:"name"`
+	Path           string    `json:"path"`
+	Position       Vec2      `json:"position"`
+	Scale          Vec2      `json:"scale,omitempty"`
+	Ratation       float64   `json:"rotation,omitempty"`
+	ZIndex         int32     `json:"z_index,omitempty"`
+	Pivot          Vec2      `json:"pivot,omitempty"`
+	ColliderType   string    `json:"collider_type,omitempty"` //"none","auto","circle","rect","capsule","polygon",
+	ColliderPivot  Vec2      `json:"collider_pivot,omitempty"`
+	ColliderParams []float64 `json:"collider_params,omitempty"`
+	Parent         string    `json:"parent,omitempty"`
 }
 
 // SpriteNode represents an instantiated prefab node in the scene
@@ -79,8 +97,26 @@ type SpriteNode struct {
 	Name       string         `json:"name"`
 	Parent     string         `json:"parent"`
 	Position   Vec2           `json:"position"`
+	Scale      Vec2           `json:"scale,omitempty"`
+	Ratation   float64        `json:"rotation,omitempty"`
 	Path       string         `json:"path"`
 	Properties map[string]any `json:"properties,omitempty"`
+}
+
+type PrefabNode struct {
+	Name           string                 `json:"name"`
+	Path           string                 `json:"path"`
+	Texture        string                 `json:"texture,omitempty"`
+	Position       Vec2                   `json:"position"`
+	Scale          Vec2                   `json:"scale,omitempty"`
+	Ratation       float64                `json:"rotation,omitempty"`
+	ZIndex         int32                  `json:"z_index,omitempty"`
+	Pivot          Vec2                   `json:"pivot,omitempty"`
+	ColliderType   string                 `json:"collider_type,omitempty"` //"none","auto","circle","rect","capsule","polygon",
+	ColliderPivot  Vec2                   `json:"collider_pivot,omitempty"`
+	ColliderParams []float64              `json:"collider_params,omitempty"`
+	ColliderParent string                 `json:"collider_parent,omitempty"`
+	Properties     map[string]interface{} `json:"properties,omitempty"`
 }
 
 // Root structure for JSON output
@@ -88,4 +124,5 @@ type MapData struct {
 	TileMap    TileMapData     `json:"tilemap"`
 	Decorators []DecoratorNode `json:"decorators"`
 	Sprites    []SpriteNode    `json:"sprites"`
+	Prefabs    []PrefabNode    `json:"prefabs"`
 }
