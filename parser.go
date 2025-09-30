@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -18,9 +19,31 @@ type ExtResource struct {
 	UID  string `json:"uid,omitempty"`
 }
 
+// ShapeInfo contains shape type and dimensions
+type ShapeInfo struct {
+	Type       string
+	Dimensions Vec2      // For RectangleShape2D (width, height), CircleShape2D (radius in X, 0 in Y)
+	Points     []float64 // For polygon shapes (ConvexPolygonShape2D, ConcavePolygonShape2D)
+}
+
+// PrefabInfo contains information extracted from a prefab .tscn file
+type PrefabInfo struct {
+	Name           string
+	Pivot          Vec2
+	ZIndex         int32
+	Scale          Vec2
+	Rotation       float64
+	ColliderType   string
+	ColliderPivot  Vec2
+	ColliderParams []float64
+	Texture        string
+	ColliderParent string
+}
+
 var (
-	tilemapTileSize = TileSize{Width: 16, Height: 16}
-	tilemapOffset   = Vec2{X: 0, Y: 0}
+	tilemapTileSize  = TileSize{Width: 16, Height: 16}
+	tilemapOffset    = Vec2{X: 0, Y: 0}
+	prefabsDirectory string
 )
 
 // TSCNConverter handles conversion from TSCN to TileMap JSON
@@ -28,12 +51,14 @@ type TSCNConverter struct {
 	tileSize            TileSize
 	sources             map[int]*TileSource
 	extResources        map[string]*ExtResource
-	subResourceTextures map[string]string // Maps SubResource ID to ExtResource ID
-	tilePhysicsData     map[string][]Vec2 // Maps SubResource ID to physics points
-	decorators          []DecoratorNode   // Collected Decorator nodes
-	currentDecorator    *DecoratorNode    // Currently parsing Decorator node
-	sprites             []SpriteNode      // Collected Sprite nodes
-	currentSprite       *SpriteNode       // Currently parsing Sprite node
+	subResourceTextures map[string]string      // Maps SubResource ID to ExtResource ID
+	tilePhysicsData     map[string][]Vec2      // Maps SubResource ID to physics points
+	decorators          []DecoratorNode        // Collected Decorator nodes
+	currentDecorator    *DecoratorNode         // Currently parsing Decorator node
+	sprites             []SpriteNode           // Collected Sprite nodes
+	currentSprite       *SpriteNode            // Currently parsing Sprite node
+	prefabCache         map[string]*PrefabInfo // Cache for parsed prefab files
+	subResourceShapes   map[string]*ShapeInfo  // Maps SubResource ID to shape info
 }
 
 // NewTSCNConverter creates a new converter instance
@@ -46,6 +71,8 @@ func newTSCNConverter() *TSCNConverter {
 		tilePhysicsData:     make(map[string][]Vec2),
 		decorators:          []DecoratorNode{},
 		sprites:             []SpriteNode{},
+		prefabCache:         make(map[string]*PrefabInfo),
+		subResourceShapes:   make(map[string]*ShapeInfo),
 	}
 }
 
@@ -243,6 +270,10 @@ func (c *TSCNConverter) convertTSCNToTileMap(filename string) (*MapData, error) 
 			} else if strings.Contains(line, "sub_resource") {
 				currentSection = "sub_resource"
 				currentSubResource = c.extractSubResourceID(line)
+				// Extract shape type if it's a shape sub_resource
+				if shapeType := c.extractShapeType(line); shapeType != "" {
+					c.subResourceShapes[currentSubResource] = &ShapeInfo{Type: shapeType}
+				}
 			} else if strings.Contains(line, "node name=\"TileMap\"") {
 				currentSection = "tilemap"
 			} else if strings.Contains(line, "type=\"Sprite2D\"") {
@@ -342,6 +373,7 @@ func (c *TSCNConverter) convertTSCNToTileMap(filename string) (*MapData, error) 
 		},
 		Decorators: c.decorators,
 		Sprites:    c.sprites,
+		Prefabs:    c.buildPrefabNodes(),
 	}, nil
 }
 
@@ -399,6 +431,16 @@ func (c *TSCNConverter) extractSubResourceID(line string) string {
 	return ""
 }
 
+// extractShapeType extracts the shape type from a sub_resource line
+func (c *TSCNConverter) extractShapeType(line string) string {
+	re := regexp.MustCompile(`type="(\w+Shape2D)"`)
+	matches := re.FindStringSubmatch(line)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
+}
+
 // parseSubResource parses sub-resource data (TileSetAtlasSource, TileSet)
 func (c *TSCNConverter) parseSubResource(line, resourceID string) {
 	if strings.HasPrefix(line, "texture = ExtResource(") {
@@ -407,6 +449,28 @@ func (c *TSCNConverter) parseSubResource(line, resourceID string) {
 		if extResourceID != "" && resourceID != "" {
 			// Store the mapping for later use
 			c.subResourceTextures[resourceID] = extResourceID
+		}
+	} else if strings.HasPrefix(line, "size = Vector2(") {
+		// Parse shape size for RectangleShape2D
+		if shape, exists := c.subResourceShapes[resourceID]; exists {
+			shape.Dimensions = c.extractVector2(line)
+		}
+	} else if strings.HasPrefix(line, "radius = ") {
+		// Parse radius for CircleShape2D
+		if shape, exists := c.subResourceShapes[resourceID]; exists {
+			parts := strings.Split(line, "=")
+			if len(parts) > 1 {
+				radius, _ := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+				shape.Dimensions = Vec2{X: radius, Y: 0}
+			}
+		}
+	} else if strings.HasPrefix(line, "points = PackedVector2Array(") {
+		// Parse polygon points for ConvexPolygonShape2D and ConcavePolygonShape2D
+		if shape, exists := c.subResourceShapes[resourceID]; exists {
+			points := c.extractPolygonPoints(line)
+			for _, p := range points {
+				shape.Points = append(shape.Points, p.X, p.Y)
+			}
 		}
 	} else if strings.HasPrefix(line, "0:0/0/physics_layer_0/polygon_0/points") {
 		// Parse collision polygon to determine tile size and store physics data
@@ -642,7 +706,6 @@ func (c *TSCNConverter) parseDecoratorNode(line string) *DecoratorNode {
 			decorator.Parent = matches[1]
 		}
 	}
-
 	return decorator
 }
 
@@ -665,7 +728,7 @@ func (c *TSCNConverter) parseDecoratorProperty(line string) {
 		}
 	} else if strings.HasPrefix(line, "z_index = ") {
 		// Extract z_index
-		c.currentDecorator.ZIndex = c.extractIntValue(line)
+		c.currentDecorator.ZIndex = int32(c.extractIntValue(line))
 	}
 }
 
@@ -691,7 +754,9 @@ func (c *TSCNConverter) extractVector2(line string) Vec2 {
 func (c *TSCNConverter) parseSpriteNode(line string) *SpriteNode {
 	// Extract node name, parent, and instance from line like: [node name="Brick" parent="Environment/Platforms/Platform1" instance=ExtResource("6_vt4yb")]
 	sprite := &SpriteNode{
-		Path:       "unknown", // Default until we resolve ExtResource
+		Path:       "unknown",        // Default until we resolve ExtResource
+		Scale:      Vec2{X: 1, Y: 1}, // Default scale
+		Ratation:   0,                // Default rotation
 		Properties: make(map[string]any),
 	}
 
@@ -735,6 +800,16 @@ func (c *TSCNConverter) parseSpriteProperty(line string) {
 		position.Y += tilemapOffset.Y
 		position.Y = -position.Y
 		c.currentSprite.Position = position
+	} else if strings.HasPrefix(line, "scale = Vector2(") {
+		// Extract scale
+		c.currentSprite.Scale = c.extractVector2(line)
+	} else if strings.HasPrefix(line, "rotation = ") {
+		// Extract rotation
+		parts := strings.Split(line, "=")
+		if len(parts) > 1 {
+			rotation, _ := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+			c.currentSprite.Ratation = rotation
+		}
 	} else if strings.HasPrefix(line, "gid = ") {
 		// Extract gid (common in enemy nodes)
 		gidValue := c.extractIntValue(line)
@@ -752,4 +827,308 @@ func (c *TSCNConverter) parseSpriteProperty(line string) {
 			c.currentSprite.Properties[key] = value
 		}
 	}
+}
+
+// resolvePrefabPath converts Godot res:// path to actual file system path
+func resolvePrefabPath(resPath string) string {
+	if prefabsDirectory == "" {
+		return ""
+	}
+
+	// Remove "res://" prefix
+	relativePath := strings.TrimPrefix(resPath, "res://")
+	// Remove "scenes/" prefix if present
+	relativePath = strings.TrimPrefix(relativePath, "scenes/")
+
+	return filepath.Join(prefabsDirectory, relativePath)
+}
+
+// getPrefabInfo retrieves prefab info from cache or parses the file
+func (c *TSCNConverter) getPrefabInfo(resPath string) (*PrefabInfo, error) {
+	// Check cache
+	if info, exists := c.prefabCache[resPath]; exists {
+		return info, nil
+	}
+
+	// Resolve actual file path
+	filePath := resolvePrefabPath(resPath)
+	if filePath == "" {
+		return nil, fmt.Errorf("prefabs directory not set")
+	}
+
+	// Parse the prefab file
+	info, err := c.parsePrefabFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Store in cache
+	c.prefabCache[resPath] = info
+	return info, nil
+}
+
+// parsePrefabFile parses a prefab .tscn file and extracts relevant information
+func (c *TSCNConverter) parsePrefabFile(filePath string) (*PrefabInfo, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open prefab file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	info := &PrefabInfo{
+		Scale: Vec2{X: 1, Y: 1}, // Default scale
+		Name:  "",               // Will be set from root node
+	}
+
+	// Create a temporary map for ext_resources in this prefab file
+	prefabExtResources := make(map[string]*ExtResource)
+	// Create a temporary map for sub_resource shapes in this prefab file
+	prefabShapes := make(map[string]*ShapeInfo)
+
+	scanner := bufio.NewScanner(file)
+	var currentSection string
+	var currentSubResource string
+	var inSprite2D bool
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Parse ext_resource sections
+		if strings.Contains(line, "[ext_resource") {
+			currentSection = "ext_resource"
+			extRes := &ExtResource{}
+
+			// Extract type
+			if re := regexp.MustCompile(`type="([^"]+)"`); re != nil {
+				if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+					extRes.Type = matches[1]
+				}
+			}
+
+			// Extract path
+			if re := regexp.MustCompile(`path="([^"]+)"`); re != nil {
+				if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+					extRes.Path = matches[1]
+				}
+			}
+
+			// Extract id
+			if re := regexp.MustCompile(`\sid="([^"]+)"`); re != nil {
+				matches := re.FindAllStringSubmatch(line, -1)
+				if len(matches) > 0 {
+					lastMatch := matches[len(matches)-1]
+					if len(lastMatch) > 1 {
+						extRes.ID = lastMatch[1]
+					}
+				}
+			}
+
+			if extRes.ID != "" {
+				prefabExtResources[extRes.ID] = extRes
+			}
+			continue
+		}
+
+		// Parse sub_resource sections
+		if strings.Contains(line, "[sub_resource") {
+			currentSection = "sub_resource"
+			currentSubResource = c.extractSubResourceID(line)
+			// Extract shape type if it's a shape sub_resource
+			if shapeType := c.extractShapeType(line); shapeType != "" {
+				prefabShapes[currentSubResource] = &ShapeInfo{Type: shapeType}
+			}
+			continue
+		}
+
+		// Detect root node (first node declaration)
+		if strings.HasPrefix(line, "[node name=") && info.Name == "" {
+			// Extract root node name
+			if re := regexp.MustCompile(`name="([^"]+)"`); re != nil {
+				if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+					info.Name = matches[1]
+				}
+			}
+		}
+
+		// Detect Sprite2D node section
+		if strings.Contains(line, "type=\"Sprite2D\"") {
+			inSprite2D = true
+			currentSection = "sprite2d"
+			continue
+		}
+
+		// Detect CollisionShape2D or CollisionPolygon2D
+		if strings.Contains(line, "type=\"CollisionShape2D\"") || strings.Contains(line, "type=\"CollisionPolygon2D\"") {
+			inSprite2D = false
+			currentSection = "collision"
+			info.ColliderType = "auto"
+			if re := regexp.MustCompile(`parent="([^"]+)"`); re != nil {
+				if matches := re.FindStringSubmatch(line); len(matches) > 1 {
+					info.ColliderParent = matches[1]
+				}
+			}
+			continue
+		}
+
+		// Reset section on new node
+		if strings.HasPrefix(line, "[node ") && !strings.Contains(line, "type=\"Sprite2D\"") &&
+			!strings.Contains(line, "type=\"CollisionShape2D\"") && !strings.Contains(line, "type=\"CollisionPolygon2D\"") {
+			inSprite2D = false
+			currentSection = ""
+		}
+
+		// Parse sub_resource properties
+		if currentSection == "sub_resource" && currentSubResource != "" {
+			if strings.HasPrefix(line, "size = Vector2(") {
+				// Parse shape size for RectangleShape2D
+				if shape, exists := prefabShapes[currentSubResource]; exists {
+					shape.Dimensions = c.extractVector2(line)
+				}
+			} else if strings.HasPrefix(line, "radius = ") {
+				// Parse radius for CircleShape2D
+				if shape, exists := prefabShapes[currentSubResource]; exists {
+					parts := strings.Split(line, "=")
+					if len(parts) > 1 {
+						radius, _ := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+						shape.Dimensions = Vec2{X: radius, Y: 0}
+					}
+				}
+			} else if strings.HasPrefix(line, "points = PackedVector2Array(") {
+				// Parse polygon points for ConvexPolygonShape2D and ConcavePolygonShape2D
+				if shape, exists := prefabShapes[currentSubResource]; exists {
+					points := c.extractPolygonPoints(line)
+					for _, p := range points {
+						shape.Points = append(shape.Points, p.X, p.Y)
+					}
+				}
+			}
+		}
+
+		// Parse Sprite2D properties
+		if inSprite2D && currentSection == "sprite2d" {
+			if strings.HasPrefix(line, "position = Vector2(") {
+				info.Pivot = c.extractVector2(line)
+			} else if strings.HasPrefix(line, "scale = Vector2(") {
+				info.Scale = c.extractVector2(line)
+			} else if strings.HasPrefix(line, "rotation = ") {
+				parts := strings.Split(line, "=")
+				if len(parts) > 1 {
+					rotation, _ := strconv.ParseFloat(strings.TrimSpace(parts[1]), 64)
+					info.Rotation = rotation
+				}
+			} else if strings.HasPrefix(line, "z_index = ") {
+				parts := strings.Split(line, "=")
+				if len(parts) > 1 {
+					zIndex, _ := strconv.ParseInt(strings.TrimSpace(parts[1]), 10, 32)
+					info.ZIndex = int32(zIndex)
+				}
+			} else if strings.HasPrefix(line, "texture = ExtResource(") {
+				extResourceID := c.extractExtResourceID(line)
+				// Look up in prefab's own ext_resources
+				if extRes, exists := prefabExtResources[extResourceID]; exists {
+					info.Texture = extRes.Path
+				}
+			}
+		}
+
+		// Parse collision properties
+		if currentSection == "collision" {
+			if strings.HasPrefix(line, "position = Vector2(") {
+				info.ColliderPivot = c.extractVector2(line)
+			} else if strings.Contains(line, "polygon = PackedVector2Array(") {
+				// Parse collision polygon points
+				points := c.extractPolygonPoints(line)
+				for _, p := range points {
+					info.ColliderParams = append(info.ColliderParams, p.X, p.Y)
+				}
+			} else if strings.HasPrefix(line, "shape = SubResource(") {
+				// Extract shape SubResource ID and determine shape type
+				shapeID := c.extractSubResourceReference(line)
+				if shapeInfo, exists := prefabShapes[shapeID]; exists {
+					// Convert shape type to collider type
+					switch shapeInfo.Type {
+					case "RectangleShape2D":
+						info.ColliderType = "rect"
+						info.ColliderParams = []float64{
+							shapeInfo.Dimensions.X, shapeInfo.Dimensions.Y,
+						}
+					case "CircleShape2D":
+						info.ColliderType = "circle"
+						// For circle, store radius in ColliderParams
+						info.ColliderParams = []float64{shapeInfo.Dimensions.X}
+					case "CapsuleShape2D":
+						info.ColliderType = "capsule"
+					case "ConvexPolygonShape2D", "ConcavePolygonShape2D":
+						info.ColliderType = "polygon"
+						// Use the points from the shape
+						info.ColliderParams = shapeInfo.Points
+					default:
+						info.ColliderType = "auto"
+					}
+				}
+			}
+		}
+	}
+	if info.ColliderParent == "." {
+		info.ColliderPivot.Sub(info.Pivot)
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("error reading prefab file: %w", err)
+	}
+
+	return info, nil
+}
+
+// buildPrefabNodes converts SpriteNodes to PrefabNodes with enriched information
+func (c *TSCNConverter) buildPrefabNodes() []PrefabNode {
+	var prefabs []PrefabNode
+	var prefabMap = make(map[string]bool) // To avoid duplicates
+
+	// First, add decorators as prefabs
+	for _, sprite := range c.sprites {
+		prefab := PrefabNode{
+			Name:       sprite.Name,
+			Path:       sprite.Path,
+			Position:   sprite.Position,
+			Scale:      sprite.Scale,
+			Ratation:   sprite.Ratation,
+			Properties: sprite.Properties,
+		}
+
+		// Try to get prefab info and merge it
+		if prefabInfo, err := c.getPrefabInfo(sprite.Path); err == nil {
+			// Use the prefab's name if available
+			prefab.Name = prefabInfo.Name
+			// Set the texture path from prefab
+			prefab.Texture = prefabInfo.Texture
+
+			prefab.Pivot = prefabInfo.Pivot
+			prefab.ZIndex = prefabInfo.ZIndex
+			prefab.ColliderType = prefabInfo.ColliderType
+			prefab.ColliderPivot = prefabInfo.ColliderPivot
+
+			prefab.ColliderParams = prefabInfo.ColliderParams
+			prefab.ColliderParent = prefabInfo.ColliderParent
+
+			// For scale: if sprite scale is default (1,1), use prefab scale
+			// Otherwise, multiply sprite scale with prefab scale for proper transformation
+			prefab.Scale.X = prefabInfo.Scale.X
+			prefab.Scale.Y = prefabInfo.Scale.Y
+			// Note: Rotation should also consider prefab rotation
+			if prefab.Ratation == 0 {
+				prefab.Ratation = prefabInfo.Rotation
+			} else {
+				prefab.Ratation += prefabInfo.Rotation
+			}
+		}
+		if _, exists := prefabMap[prefab.Name]; !exists {
+			prefabMap[prefab.Name] = true
+			prefabs = append(prefabs, prefab)
+		}
+	}
+	return prefabs
 }

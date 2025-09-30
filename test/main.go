@@ -21,6 +21,10 @@ type ReplacementConfig struct {
 	Replacements []Replacement `json:"replacements"`
 }
 
+func convertToTilemap(data *tscnparser.MapData) {
+
+}
+
 func main() {
 	var inputFile = flag.String("input", "", "Input TSCN file path")
 	var outputFile = flag.String("output", "", "Output JSON file path")
@@ -28,6 +32,7 @@ func main() {
 	var replacementsFile = flag.String("replacements", "", "JSON file containing replacement rules")
 	var offsetX = flag.Int("offsetx", 0, "X offset")
 	var offsetY = flag.Int("offsety", 0, "Y offset")
+	var prefabsDir = flag.String("prefabs", "", "Directory containing prefab .tscn files")
 	flag.Parse()
 
 	if *inputFile == "" {
@@ -42,6 +47,7 @@ func main() {
 
 	tscnparser.SetTileSize(int(*tileSize))
 	tscnparser.SetOffset(*offsetX, *offsetY)
+	tscnparser.SetPrefabsDir(*prefabsDir)
 
 	// Parse TSCN file
 	tileMapData, err := tscnparser.Parse(*inputFile)
@@ -49,6 +55,7 @@ func main() {
 		log.Fatalf("Error converting TSCN: %v", err)
 	}
 
+	tscnparser.ConvertToTilemap(tileMapData)
 	// Output to JSON with custom layers if available
 	var jsonData []byte
 	jsonData, err = json.MarshalIndent(tileMapData, "", "  ")
