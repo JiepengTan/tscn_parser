@@ -3,7 +3,12 @@ package tscnparser
 import (
 	"bufio"
 	"fmt"
+	"image"
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -38,6 +43,7 @@ type PrefabInfo struct {
 	ColliderParams []float64
 	Texture        string
 	ColliderParent string
+	TextureSize    Vec2
 }
 
 var (
@@ -1031,6 +1037,21 @@ func (c *TSCNConverter) parsePrefabFile(filePath string) (*PrefabInfo, error) {
 				// Look up in prefab's own ext_resources
 				if extRes, exists := prefabExtResources[extResourceID]; exists {
 					info.Texture = extRes.Path
+					//file, err := os.Open(filePath)
+					texPath := path.Join(filePath, "../../", strings.ReplaceAll(extRes.Path, "res:/", ""))
+					file, err := os.Open(texPath)
+					if err != nil {
+						println("error opening image file:", err)
+					} else {
+						defer file.Close()
+						img, _, err := image.Decode(file)
+						if err != nil {
+							println("error decoding image:", err)
+						} else {
+							bounds := img.Bounds()
+							info.TextureSize = Vec2{X: float64(bounds.Dx()), Y: float64(bounds.Dy())}
+						}
+					}
 				}
 			}
 		}
@@ -1073,8 +1094,8 @@ func (c *TSCNConverter) parsePrefabFile(filePath string) (*PrefabInfo, error) {
 			}
 		}
 	}
-	if info.ColliderParent == "." {
-		info.ColliderPivot.Sub(info.Pivot)
+	if info.ColliderParent != "." {
+		info.ColliderPivot = info.ColliderPivot.Add(info.Pivot)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, fmt.Errorf("error reading prefab file: %w", err)
@@ -1105,6 +1126,7 @@ func (c *TSCNConverter) buildPrefabNodes() []PrefabNode {
 			prefab.Name = prefabInfo.Name
 			// Set the texture path from prefab
 			prefab.Texture = prefabInfo.Texture
+			prefab.TextureSize = prefabInfo.TextureSize
 
 			prefab.Pivot = prefabInfo.Pivot
 			prefab.ZIndex = prefabInfo.ZIndex
