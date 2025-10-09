@@ -28,8 +28,7 @@ func ConvertToTilemap(data *MapData) {
 		}
 		// TODO 1. adjust rotation for spx
 		// TODO 2. adjust pivot for spx
-		decorator.Ratation = sprite.Ratation + 90 // Adjust rotation for spx
-
+		decorator.Ratation = sprite.Ratation*180/3.1415926535 + 90 // Adjust rotation for spx
 		// If there's a matching prefab, merge its data
 		if prefab, exists := prefabMap[sprite.Path]; exists {
 			// Use name from prefab if it has one
@@ -39,6 +38,7 @@ func ConvertToTilemap(data *MapData) {
 
 			// IMPORTANT: Use the texture path from prefab for rendering
 			decorator.Path = prefab.Texture
+			decorator.TextureSize = prefab.TextureSize
 			// Use pivot from prefab if available
 			decorator.Pivot = prefab.Pivot
 
@@ -74,8 +74,11 @@ func ConvertToTilemap(data *MapData) {
 	for idx := range data.Decorators {
 		item := &data.Decorators[idx]
 		//item.Position.InvertY()
-		item.ColliderPivot.InvertY()
+		item.ColliderPivot = item.ColliderPivot.InvertY()
+		item.Pivot = item.Pivot.InvertY()
 		item.Parent = ""
-		//item.Pivot.InvertY()
+		// convert pivot  &&  collider pivot to spx's pivot and collider pivot
+		item.Pivot = item.Pivot.Add(item.TextureSize.Mulf(0.5))
+		item.ColliderPivot = item.ColliderPivot.Sub(item.Pivot)
 	}
 }

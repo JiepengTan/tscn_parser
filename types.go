@@ -1,5 +1,7 @@
 package tscnparser
 
+import "fmt"
+
 type Vec2i struct {
 	X int `json:"x"`
 	Y int `json:"y"`
@@ -11,16 +13,23 @@ type Vec2 struct {
 	Y float64 `json:"y"`
 }
 
-func (v *Vec2) Add(other Vec2) {
-	v.X += other.X
-	v.Y += other.Y
+func (v Vec2) Add(other Vec2) Vec2 {
+	return Vec2{X: v.X + other.X, Y: v.Y + other.Y}
 }
-func (v *Vec2) Sub(other Vec2) {
-	v.X -= other.X
-	v.Y -= other.Y
+func (v Vec2) Sub(other Vec2) Vec2 {
+	return Vec2{X: v.X - other.X, Y: v.Y - other.Y}
 }
-func (v *Vec2) InvertY() {
-	v.Y = -v.Y
+
+func (v Vec2) Mulf(val float64) Vec2 {
+	return Vec2{X: v.X * val, Y: v.Y * val}
+}
+
+func (v Vec2) InvertY() Vec2 {
+	return Vec2{X: v.X, Y: -v.Y}
+}
+
+func (v *Vec2) String() string {
+	return fmt.Sprintf("(%f, %f)", v.X, v.Y)
 }
 
 // TileSize represents the dimensions of a tile
@@ -90,6 +99,7 @@ type DecoratorNode struct {
 	ColliderPivot  Vec2      `json:"collider_pivot,omitempty"`
 	ColliderParams []float64 `json:"collider_params,omitempty"`
 	Parent         string    `json:"parent,omitempty"`
+	TextureSize    Vec2      `json:"texture_size,omitempty"`
 }
 
 // SpriteNode represents an instantiated prefab node in the scene
@@ -117,6 +127,7 @@ type PrefabNode struct {
 	ColliderParams []float64              `json:"collider_params,omitempty"`
 	ColliderParent string                 `json:"collider_parent,omitempty"`
 	Properties     map[string]interface{} `json:"properties,omitempty"`
+	TextureSize    Vec2                   `json:"texture_size,omitempty"`
 }
 
 // Root structure for JSON output
