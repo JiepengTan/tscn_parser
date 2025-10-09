@@ -26,6 +26,10 @@ func ConvertToTilemap(data *MapData) {
 			Scale:    sprite.Scale,
 			Ratation: sprite.Ratation,
 		}
+		// TODO 1. adjust rotation for spx
+		// TODO 2. adjust pivot for spx
+		decorator.Ratation = sprite.Ratation + 90 // Adjust rotation for spx
+
 		// If there's a matching prefab, merge its data
 		if prefab, exists := prefabMap[sprite.Path]; exists {
 			// Use name from prefab if it has one
