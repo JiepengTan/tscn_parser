@@ -18,11 +18,43 @@ if err != nil {
 
 ## Command Line Usage
 
-### Using the test command
+### Quick Start: Using the Standalone Script
+
+The easiest way to convert TSCN files is using the `convert2spx.sh` script:
 
 ```bash
-cd test/
-go run . -input <tscn_file> [-output <json_file>] [-replacements <json_file>] [-generateGo] [-oldStr <old_string>] [-newStr <new_string>]
+# Basic usage with default parameters
+./convert2spx.sh
+
+# Custom input and output paths
+./convert2spx.sh <input_tscn_file> <output_json_file>
+
+# Show help
+./convert2spx.sh --help
+```
+
+**Features:**
+- Automatically downloads and uses the latest version of tscnparser
+- No manual setup required (only Go needs to be installed)
+- Includes built-in replacement rules for SPX format
+- Processes with optimized settings (tilesize: 16, offset: 80x384)
+
+### Using the Command Line Tool Directly
+
+You can also install and use the command-line tool directly:
+
+```bash
+# Install the latest version
+go install github.com/JiepengTan/tscn_parser/cmd/tscnparser@latest
+
+# Or run directly without installation
+go run github.com/JiepengTan/tscn_parser/cmd/tscnparser@latest -input <tscn_file> [options]
+```
+
+#### Basic Command Usage
+
+```bash
+tscnparser -input <tscn_file> [-output <json_file>] [-replacements <json_file>] [-generateGo] [-oldStr <old_string>] [-newStr <new_string>]
 ```
 
 ### Parameters
@@ -30,6 +62,10 @@ go run . -input <tscn_file> [-output <json_file>] [-replacements <json_file>] [-
 - `-input`: Required. Path to the input TSCN file
 - `-output`: Optional. Path to the output JSON file. If not specified, generates `<input_filename>_tilemap.json`
 - `-replacements`: Optional. JSON file containing multiple replacement rules
+- `-tilesize`: Optional. Tile size in pixels (default: 16)
+- `-offsetx`: Optional. X offset for tile coordinates (default: 0)
+- `-offsety`: Optional. Y offset for tile coordinates (default: 0)
+- `--prefabs`: Optional. Directory containing prefab .tscn files for scene instantiation
 - `-generateGo`: Optional. Generate Go code file (.go.txt) for direct integration
 - `-oldStr`: Optional. Single string to replace in JSON output (applied after replacements file)
 - `-newStr`: Optional. Replacement string for oldStr
@@ -38,28 +74,28 @@ go run . -input <tscn_file> [-output <json_file>] [-replacements <json_file>] [-
 
 ```bash
 # Basic usage
-cd test/
-go run . -input main.tscn
+tscnparser -input main.tscn
 
 # With custom output file
-cd test/
-go run . -input main.tscn -output my_tilemap.json
+tscnparser -input main.tscn -output my_tilemap.json
 
 # With multiple replacements from JSON file
-cd test/
-go run . -input main.tscn -replacements replacements.json
+tscnparser -input main.tscn -replacements replacements.json
+
+# With tile size and offset parameters
+tscnparser -input main.tscn -tilesize 16 -offsetx 80 -offsety 384
+
+# With prefabs directory
+tscnparser -input main.tscn --prefabs "./scenes"
 
 # With both JSON replacements and single replacement
-cd test/
-go run . -input main.tscn -replacements replacements.json -oldStr "additional_old" -newStr "additional_new"
+tscnparser -input main.tscn -replacements replacements.json -oldStr "additional_old" -newStr "additional_new"
 
 # Generate Go code for direct integration
-cd test/
-go run . -input main.tscn -generateGo
+tscnparser -input main.tscn -generateGo
 
 # Generate both JSON and Go code with replacements
-cd test/
-go run . -input main.tscn -replacements replacements.json -generateGo
+tscnparser -input main.tscn -replacements replacements.json -generateGo
 ```
 
 ### Replacement Configuration File
@@ -191,13 +227,34 @@ The output includes:
 - **sprite2ds**: Individual Sprite2D nodes found in the scene
 - **prefabs**: Instantiated scene prefabs with their properties
 
-## Testing
+## Installation
 
-Run the test script to verify the tool works correctly:
+### Option 1: Use the Standalone Script (Recommended)
+
+Download the `convert2spx.sh` script from the repository. No installation needed - the script will automatically download and use the latest version of the tool.
 
 ```bash
-cd test/
-./test.sh
+# Download the script
+curl -O https://raw.githubusercontent.com/JiepengTan/tscn_parser/main/convert2spx.sh
+chmod +x convert2spx.sh
+
+# Run it
+./convert2spx.sh <input_tscn_file> <output_json_file>
 ```
 
-This will process the test TSCN file and generate the corresponding JSON output.
+### Option 2: Install the Command-Line Tool
+
+```bash
+go install github.com/JiepengTan/tscn_parser/cmd/tscnparser@latest
+```
+
+### Option 3: Run Directly Without Installation
+
+```bash
+go run github.com/JiepengTan/tscn_parser/cmd/tscnparser@latest -input <tscn_file>
+```
+
+## Requirements
+
+- Go 1.21 or higher (for running the tool or script)
+- For library usage: Import as a Go module

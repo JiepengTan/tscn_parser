@@ -1,7 +1,0 @@
-{
-  "replacements": [
-    {"old": "res://textures/", "new": "textures/"},
-    {"old": "res://scenes/", "new": ""},
-    {"old": ".tscn", "new": ""}
-  ]
-}
